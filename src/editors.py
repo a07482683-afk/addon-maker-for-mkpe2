@@ -249,6 +249,9 @@ class TextureEditor(QtWidgets.QDialog):
             self.layer_list.addItem(item)
         self.layer_list.setCurrentRow(len(self.canvas.layers)-1-self.canvas.active_layer)
         self.layer_list.blockSignals(False)
+        self.opacity_slider.blockSignals(True)
+        self.opacity_slider.setValue(int(self.canvas.layers[self.canvas.active_layer]["opacity"] * 100))
+        self.opacity_slider.blockSignals(False)
 
     def select_layer(self, row):
         if row >= 0:

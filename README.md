@@ -2,14 +2,25 @@
 
 A desktop GUI for creating Minecraft Bedrock Edition add-on projects.
 
-## Phase 1
+## Current features
 
-- Dark desktop dashboard.
-- Create projects with Behavior Pack (BP) and Resource Pack (RP) folders.
-- Generate starter manifest.json files with unique UUIDs.
-- Windows x64 build workflow using GitHub Actions.
+- Dark desktop dashboard and project generator.
+- Creates linked Behavior Pack (BP) and Resource Pack (RP) folders with unique starter manifests.
+- Texture Studio: pixel canvas, 16/32/64/128/256 presets, pencil, eraser, flood fill, eyedropper, color picker with alpha, pixel grid, undo, PNG import and export.
+- Visual Event Sheet: add/remove event rows using the Construct-style WHEN → DO workflow and save them as JSON.
+- Code workspace: editable and saveable starter files for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
+- Windows x64 build workflow via GitHub Actions.
 
-The content-editor cards are UI entry points for later phases. The 3D viewport, OBJ/FBX import, animation tools, fitting tools and .mcaddon packaging are not implemented yet.
+The visual event sheet is a beginner-friendly authoring layer; it does not yet compile every event into a working Bedrock Script API implementation. The code tabs are available for direct authoring.
+
+## Planned next phases
+
+- Live Bedrock texture atlas/project integration and layers.
+- Item, armor, block and entity editors.
+- Bedrock geometry preview and OBJ/FBX model import.
+- Animation timeline and fitting tools.
+- Pack validation and .mcpack / .mcaddon export.
+- Event-to-code generation and expanded event/action libraries.
 
 ## Windows 7 compatibility target
 
@@ -28,14 +39,6 @@ The executable is created under dist\AddonMaker\AddonMaker.exe.
 
 ## Build with GitHub Actions
 
-Open the repository Actions tab, select Build Addon Maker for MCPE, and run the workflow on branch phase1-dashboard. Download the AddonMaker-Windows-x64 artifact from the completed run.
-
-## Roadmap
-
-1. Dashboard and project generator.
-2. Item, armor, block and entity editors.
-3. Bedrock geometry preview and model import.
-4. Animation and fitting tools.
-5. Pack validation and .mcpack / .mcaddon export.
+Open the repository Actions tab, select Build Addon Maker for MCPE, choose branch phase2-texture-events, and run the workflow. Download the AddonMaker-Windows-x64 artifact from the completed run.
 
 This is an unofficial community tool and is not affiliated with Mojang or Microsoft.

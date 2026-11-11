@@ -219,13 +219,20 @@ class TextureEditor(QtWidgets.QDialog):
         self.layer_list = QtWidgets.QListWidget()
         self.layer_list.currentRowChanged.connect(self.select_layer)
         layer_panel.addWidget(self.layer_list, 1)
-        for label, callback in (("+ Add", self.add_layer), ("− Delete", self.delete_layer),
-                                ("Move up", lambda: self.move_layer(-1)),
-                                ("Move down", lambda: self.move_layer(1))):
+        for label, callback in (("+ Add", self.add_layer), ("Duplicate", self.duplicate_layer),
+                                ("Rename", self.rename_layer), ("− Delete", self.delete_layer),
+                                ("Move up", lambda: self.move_layer(1)),
+                                ("Move down", lambda: self.move_layer(-1))):
             button = QtWidgets.QPushButton(label)
             button.clicked.connect(callback)
             layer_panel.addWidget(button)
         self.layer_list.itemChanged.connect(self.layer_visibility_changed)
+        layer_panel.addWidget(QtWidgets.QLabel("Layer opacity"))
+        self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.opacity_slider.setRange(0, 100)
+        self.opacity_slider.setValue(100)
+        self.opacity_slider.valueChanged.connect(self.change_opacity)
+        layer_panel.addWidget(self.opacity_slider)
         body.addLayout(layer_panel)
         root.addLayout(body, 1)
         self.status = QtWidgets.QLabel("Pencil • 64 × 64 • Transparent background")
@@ -246,7 +253,28 @@ class TextureEditor(QtWidgets.QDialog):
     def select_layer(self, row):
         if row >= 0:
             self.canvas.active_layer = len(self.canvas.layers)-1-row
+            self.opacity_slider.blockSignals(True)
+            self.opacity_slider.setValue(int(self.canvas.layers[self.canvas.active_layer]["opacity"] * 100))
+            self.opacity_slider.blockSignals(False)
             self.canvas.update()
+
+    def change_opacity(self, value):
+        self.canvas.layers[self.canvas.active_layer]["opacity"] = value / 100.0
+        self.canvas.update()
+
+    def duplicate_layer(self):
+        source = self.canvas.layers[self.canvas.active_layer]
+        self.canvas.add_layer(source["name"] + " copy")
+        self.canvas.image = source["image"].copy()
+        self.canvas.layers[self.canvas.active_layer]["opacity"] = source["opacity"]
+        self.refresh_layers()
+
+    def rename_layer(self):
+        layer = self.canvas.layers[self.canvas.active_layer]
+        name, ok = QtWidgets.QInputDialog.getText(self, "Rename layer", "Layer name:", text=layer["name"])
+        if ok and name.strip():
+            layer["name"] = name.strip()
+            self.refresh_layers()
 
     def layer_visibility_changed(self, item):
         index = self.layer_list.row(item)
@@ -464,7 +492,7 @@ class EventSheetEditor(QtWidgets.QWidget):
                 lines.append("  const player = event.player;")
             if event["action"] == "Send chat message":
                 msg = json.dumps(event["value"], ensure_ascii=False)
-                target = "player" if player_decl else "event.deadEntity"
+                target = "player" if player_decl else "world"
                 lines.append("  %s.sendMessage(%s);" % (target, msg))
             elif event["action"] == "Run command":
                 command = json.dumps(event["value"], ensure_ascii=False)

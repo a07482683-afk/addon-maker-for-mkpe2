@@ -3,6 +3,7 @@ import sys
 import uuid
 from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
+from editors import TextureEditor, LogicWorkspace
 
 APP_NAME = "Addon Maker for MCPE"
 APP_VERSION = "0.1.0"
@@ -109,7 +110,7 @@ class MainWindow(QtWidgets.QMainWindow):
         brand.setObjectName("Brand")
         side.addWidget(brand)
         side.addSpacing(28)
-        for label in ["Dashboard", "My Projects", "Content Editors", "3D Workspace", "Export"]:
+        for label in ["Dashboard", "My Projects", "Content Editors", "Texture Studio", "Logic & Code", "3D Workspace", "Export"]:
             button = QtWidgets.QPushButton(label)
             button.setObjectName("Nav")
             button.clicked.connect(lambda checked=False, n=label: self.show_placeholder(n))
@@ -169,7 +170,9 @@ class MainWindow(QtWidgets.QMainWindow):
             ("▧", "Blocks", "Block properties and geometry"),
             ("⌂", "Entities", "Entity behavior and components"),
             ("◈", "Structures & Biomes", "World generation configuration"),
-            ("✧", "Models & Animations", "3D assets and keyframes")
+            ("✧", "Models & Animations", "3D assets and keyframes"),
+            ("▤", "Texture Studio", "Pixel-art editor with PNG export"),
+            ("⚙", "Event Sheet & Code", "Visual events plus JSON, JS, Molang and functions")
         ]
         for i, (symbol, name, detail) in enumerate(tiles):
             tile = QtWidgets.QFrame()
@@ -183,7 +186,7 @@ class MainWindow(QtWidgets.QMainWindow):
             desc = QtWidgets.QLabel(detail)
             desc.setObjectName("Muted")
             action = QtWidgets.QPushButton("Open editor  →")
-            action.clicked.connect(lambda checked=False, n=name: self.show_placeholder(n))
+            action.clicked.connect(lambda checked=False, n=name: self.open_editor(n))
             tl.addWidget(icon)
             tl.addWidget(heading)
             tl.addWidget(desc)
@@ -228,12 +231,21 @@ class MainWindow(QtWidgets.QMainWindow):
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Could not create project", str(exc))
 
+    def open_editor(self, name):
+        if name == "Texture Studio":
+            TextureEditor(self).exec_()
+            return
+        if name in ("Event Sheet & Code", "Logic & Code"):
+            LogicWorkspace(self).exec_()
+            return
+        self.show_placeholder(name)
+
     def show_placeholder(self, name):
         if name == "Dashboard":
             self.statusBar().showMessage("Dashboard")
             return
         QtWidgets.QMessageBox.information(self, name,
-            name + " is planned for a later phase. Phase 1 includes the dashboard and project generator.")
+            name + " is planned for a later phase. The Texture Studio and Logic & Code workspace are available now.")
 
 def main():
     app = QtWidgets.QApplication(sys.argv)

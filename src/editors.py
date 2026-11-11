@@ -62,9 +62,11 @@ class TextureCanvas(QtWidgets.QWidget):
             self.flood_fill(p)
         else:
             painter = QtGui.QPainter(self.image)
-            painter.setPen(QtGui.QPen(QtCore.Qt.transparent))
-            painter.setBrush(QtCore.Qt.transparent if self.tool == "Eraser" else self.color)
-            painter.drawRect(p.x(), p.y(), 1, 1)
+            if self.tool == "Eraser":
+                painter.setCompositionMode(QtGui.QPainter.CompositionMode_Clear)
+            else:
+                painter.setPen(QtGui.QPen(self.color))
+            painter.drawPoint(p)
             painter.end()
         self.update()
 

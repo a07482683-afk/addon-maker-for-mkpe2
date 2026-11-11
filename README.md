@@ -6,21 +6,23 @@ A desktop GUI for creating Minecraft Bedrock Edition add-on projects.
 
 - Dark desktop dashboard and project generator.
 - Creates linked Behavior Pack (BP) and Resource Pack (RP) folders with unique starter manifests.
-- Texture Studio: pixel canvas, 16/32/64/128/256 presets, pencil, eraser, flood fill, eyedropper, color picker with alpha, pixel grid, undo, PNG import and export.
-- Visual Event Sheet: add/remove event rows using the Construct-style WHEN → DO workflow and save them as JSON.
-- Code workspace: editable and saveable starter files for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
+- Texture Studio: 16/32/64/128/256 pixel canvas, pencil, eraser, flood fill, eyedropper, alpha color picker, pixel grid, undo, PNG import/export.
+- Layered texture projects: add, delete, duplicate, rename, reorder, hide/show and adjust opacity for layers. Save and reopen editable .tstudio projects; export a flattened PNG.
+- Visual Event Sheet: choose supported Bedrock event triggers and actions using a Construct-style WHEN → DO workflow.
+- Event Sheet export to JSON and starter JavaScript Script API generation.
+- Direct code tabs for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
 - Windows x64 build workflow via GitHub Actions.
 
-The visual event sheet is a beginner-friendly authoring layer; it does not yet compile every event into a working Bedrock Script API implementation. The code tabs are available for direct authoring.
+The event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
 
 ## Planned next phases
 
-- Live Bedrock texture atlas/project integration and layers.
+- Live Bedrock texture atlas/project integration.
 - Item, armor, block and entity editors.
 - Bedrock geometry preview and OBJ/FBX model import.
 - Animation timeline and fitting tools.
 - Pack validation and .mcpack / .mcaddon export.
-- Event-to-code generation and expanded event/action libraries.
+- Larger event and action library, validation and project-wide code generation.
 
 ## Windows 7 compatibility target
 

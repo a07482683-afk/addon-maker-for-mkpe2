@@ -2,14 +2,27 @@
 
 A desktop GUI for creating Minecraft Bedrock Edition add-on projects.
 
-## Phase 1
+## Current features
 
-- Dark desktop dashboard.
-- Create projects with Behavior Pack (BP) and Resource Pack (RP) folders.
-- Generate starter manifest.json files with unique UUIDs.
-- Windows x64 build workflow using GitHub Actions.
+- Dark desktop dashboard and project generator.
+- Creates linked Behavior Pack (BP) and Resource Pack (RP) folders with unique starter manifests.
+- Texture Studio: 16/32/64/128/256 pixel canvas, pencil, eraser, flood fill, eyedropper, alpha color picker, pixel grid, undo, PNG import/export.
+- Layered texture projects: add, delete, duplicate, rename, reorder, hide/show and adjust opacity for layers. Save and reopen editable .tstudio projects; export a flattened PNG.
+- Visual Event Sheet: choose supported Bedrock event triggers and actions using a Construct-style WHEN → DO workflow.
+- Event Sheet export to JSON and starter JavaScript Script API generation.
+- Direct code tabs for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
+- Windows x64 build workflow via GitHub Actions.
 
-The content-editor cards are UI entry points for later phases. The 3D viewport, OBJ/FBX import, animation tools, fitting tools and .mcaddon packaging are not implemented yet.
+The event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
+
+## Planned next phases
+
+- Live Bedrock texture atlas/project integration.
+- Item, armor, block and entity editors.
+- Bedrock geometry preview and OBJ/FBX model import.
+- Animation timeline and fitting tools.
+- Pack validation and .mcpack / .mcaddon export.
+- Larger event and action library, validation and project-wide code generation.
 
 ## Windows 7 compatibility target
 
@@ -28,14 +41,6 @@ The executable is created under dist\AddonMaker\AddonMaker.exe.
 
 ## Build with GitHub Actions
 
-Open the repository Actions tab, select Build Addon Maker for MCPE, and run the workflow on branch phase1-dashboard. Download the AddonMaker-Windows-x64 artifact from the completed run.
-
-## Roadmap
-
-1. Dashboard and project generator.
-2. Item, armor, block and entity editors.
-3. Bedrock geometry preview and model import.
-4. Animation and fitting tools.
-5. Pack validation and .mcpack / .mcaddon export.
+Open the repository Actions tab, select Build Addon Maker for MCPE, choose branch phase2-texture-events, and run the workflow. Download the AddonMaker-Windows-x64 artifact from the completed run.
 
 This is an unofficial community tool and is not affiliated with Mojang or Microsoft.

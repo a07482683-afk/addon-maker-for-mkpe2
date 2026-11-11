@@ -14,6 +14,7 @@ on:
       - main
       - phase1-dashboard
       - phase2-texture-events
+      - phase3-item-block-editors
     paths:
       - "src/**"
       - "requirements.txt"

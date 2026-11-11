@@ -4,9 +4,10 @@ import uuid
 from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
 from editors import TextureEditor, LogicWorkspace
+from content_editors import ItemEditor, BlockEditor
 
 APP_NAME = "Addon Maker for MCPE"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -237,6 +238,12 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         if name in ("Event Sheet & Code", "Logic & Code"):
             LogicWorkspace(self).exec_()
+            return
+        if name == "Items & Materials":
+            ItemEditor(self).exec_()
+            return
+        if name == "Blocks":
+            BlockEditor(self).exec_()
             return
         self.show_placeholder(name)
 

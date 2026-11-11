@@ -11,14 +11,16 @@ A desktop GUI for creating Minecraft Bedrock Edition add-on projects.
 - Visual Event Sheet: choose supported Bedrock event triggers and actions using a Construct-style WHEN → DO workflow.
 - Event Sheet export to JSON and starter JavaScript Script API generation.
 - Direct code tabs for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
+- Item editor: generates a starter Bedrock item JSON file with identifier, display name, creative category, icon key, stack size and foil setting.
+- Block editor: generates a starter Bedrock block JSON file with identifier, display name, creative category, mining time, friction, light emission and map color.
 - Windows x64 build workflow via GitHub Actions.
 
-The event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
+The item and block editors save starter JSON into the selected BP/items or BP/blocks folder. The item icon key must be registered in the resource pack texture atlas separately; the editor does not generate textures yet. These are starter definitions, not a full Bedrock schema validator.\n\nThe event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
 
 ## Planned next phases
 
 - Live Bedrock texture atlas/project integration.
-- Item, armor, block and entity editors.
+- Armor and entity editors, plus expanded validation and resource-pack texture registration.
 - Bedrock geometry preview and OBJ/FBX model import.
 - Animation timeline and fitting tools.
 - Pack validation and .mcpack / .mcaddon export.

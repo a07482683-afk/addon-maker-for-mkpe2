@@ -61,7 +61,8 @@ class ProjectDialog(QtWidgets.QDialog):
         form.addRow("Save location", row)
         layout.addLayout(form)
         buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Create | QtWidgets.QDialogButtonBox.Cancel)
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.button(QtWidgets.QDialogButtonBox.Ok).setText('Create')
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -163,7 +164,7 @@ class MainWindow(QtWidgets.QMainWindow):
         grid = QtWidgets.QGridLayout()
         grid.setSpacing(14)
         tiles = [
-            ("▦", "Items & Equipment", "Item definitions and properties"),
+            ("▦", "Items & Materials", "Item definitions and properties"),
             ("⬡", "Armor & Wearables", "Protection, durability and visuals"),
             ("▧", "Blocks", "Block properties and geometry"),
             ("⌂", "Entities", "Entity behavior and components"),

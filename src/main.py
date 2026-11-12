@@ -235,7 +235,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif key == "armor":
             ArmorEditor(self, bp, rp).exec_()
         elif key == "texture":
-            TextureEditor(self).exec_()
+            TextureEditor(self, str(self.project_path)).exec_()
         elif key == "model":
             ModelWorkspace(self).exec_()
         elif key == "logic":

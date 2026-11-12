@@ -15,6 +15,7 @@ on:
       - phase1-dashboard
       - phase2-texture-events
       - phase3-item-block-editors
+      - phase4-armor-texture-registry
     paths:
       - "src/**"
       - "requirements.txt"

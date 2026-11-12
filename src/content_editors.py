@@ -198,3 +198,166 @@ class BlockEditor(DefinitionEditor):
                 }
             }
         }
+
+
+class ArmorEditor(DefinitionEditor):
+    """Starter Bedrock wearable item editor."""
+    folder_name = "items"
+    title_text = "Armor & Wearables Editor"
+
+    def add_fields(self, form):
+        self.slot = QtWidgets.QComboBox()
+        self.slot.addItems(["slot.armor.head", "slot.armor.chest", "slot.armor.legs", "slot.armor.feet"])
+        self.protection = QtWidgets.QSpinBox()
+        self.protection.setRange(0, 30)
+        self.protection.setValue(2)
+        self.durability = QtWidgets.QSpinBox()
+        self.durability.setRange(1, 10000)
+        self.durability.setValue(250)
+        self.icon = QtWidgets.QLineEdit("my_armor")
+        self.stack = QtWidgets.QSpinBox()
+        self.stack.setRange(1, 64)
+        self.stack.setValue(1)
+        form.addRow("Armor slot", self.slot)
+        form.addRow("Protection", self.protection)
+        form.addRow("Maximum durability", self.durability)
+        form.addRow("Texture key", self.icon)
+        form.addRow("Maximum stack", self.stack)
+
+    def connect_fields(self):
+        for signal in (self.slot.currentTextChanged, self.protection.valueChanged,
+                       self.durability.valueChanged, self.icon.textChanged,
+                       self.stack.valueChanged):
+            signal.connect(self.refresh_preview)
+
+    def definition(self):
+        identifier = self.identifier.text().strip()
+        texture = self.icon.text().strip() or identifier.split(":")[-1]
+        return {
+            "format_version": "1.20.0",
+            "minecraft:item": {
+                "description": {
+                    "identifier": identifier,
+                    "menu_category": {"category": "equipment"}
+                },
+                "components": {
+                    "minecraft:display_name": {"value": self.display_name.text()},
+                    "minecraft:icon": {"texture": texture},
+                    "minecraft:max_stack_size": self.stack.value(),
+                    "minecraft:wearable": {
+                        "slot": self.slot.currentText(),
+                        "protection": self.protection.value()
+                    },
+                    "minecraft:durability": {"max_durability": self.durability.value()}
+                }
+            }
+        }
+
+
+class TextureRegistryEditor(QtWidgets.QDialog):
+    """Copies PNG item icons into RP and maintains textures/item_texture.json."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Resource Pack Texture Registry")
+        self.resize(760, 520)
+        root = QtWidgets.QVBoxLayout(self)
+        form = QtWidgets.QFormLayout()
+        self.rp_path = QtWidgets.QLineEdit()
+        browse = QtWidgets.QPushButton("Choose RP…")
+        browse.clicked.connect(self.choose_rp)
+        row = QtWidgets.QHBoxLayout()
+        row.addWidget(self.rp_path, 1)
+        row.addWidget(browse)
+        form.addRow("Resource Pack folder", row)
+        self.key = QtWidgets.QLineEdit("my_item")
+        form.addRow("Texture key", self.key)
+        self.image_path = QtWidgets.QLineEdit()
+        pick = QtWidgets.QPushButton("Choose PNG…")
+        pick.clicked.connect(self.choose_png)
+        image_row = QtWidgets.QHBoxLayout()
+        image_row.addWidget(self.image_path, 1)
+        image_row.addWidget(pick)
+        form.addRow("PNG image", image_row)
+        root.addLayout(form)
+        self.preview = QtWidgets.QPlainTextEdit()
+        self.preview.setReadOnly(True)
+        root.addWidget(QtWidgets.QLabel("Atlas entry preview"))
+        root.addWidget(self.preview, 1)
+        self.key.textChanged.connect(self.refresh_preview)
+        save = QtWidgets.QPushButton("Copy PNG and register texture")
+        save.clicked.connect(self.register_texture)
+        root.addWidget(save)
+        self.refresh_preview()
+
+    def choose_rp(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose Resource Pack folder")
+        if folder:
+            self.rp_path.setText(folder)
+
+    def choose_png(self):
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Choose PNG texture", "", "PNG images (*.png)")
+        if filename:
+            self.image_path.setText(filename)
+
+    def atlas_path(self):
+        return Path(self.rp_path.text().strip()) / "textures" / "item_texture.json"
+
+    def atlas_data(self):
+        path = self.atlas_path()
+        if path.is_file():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+                if not isinstance(data, dict):
+                    raise ValueError("Atlas root must be a JSON object.")
+            except Exception as exc:
+                raise ValueError("Cannot read item_texture.json: " + str(exc))
+        else:
+            data = {"resource_pack_name": "Addon Maker", "texture_name": "atlas.items", "texture_data": {}}
+        data.setdefault("resource_pack_name", "Addon Maker")
+        data.setdefault("texture_name", "atlas.items")
+        data.setdefault("texture_data", {})
+        if not isinstance(data["texture_data"], dict):
+            raise ValueError("texture_data must be a JSON object.")
+        return data
+
+    def refresh_preview(self, *_):
+        key = self.key.text().strip()
+        entry = {key: {"textures": "textures/items/" + key}} if key else {}
+        self.preview.setPlainText(json.dumps(entry, indent=2, ensure_ascii=False))
+
+    def register_texture(self):
+        key = self.key.text().strip()
+        rp = Path(self.rp_path.text().strip())
+        source = Path(self.image_path.text().strip())
+        if not re.match(r"^[a-z0-9_]+$", key):
+            QtWidgets.QMessageBox.warning(self, "Invalid key", "Use lowercase letters, digits and underscores.")
+            return
+        if not rp.is_dir():
+            QtWidgets.QMessageBox.warning(self, "Choose RP", "Select an existing Resource Pack folder.")
+            return
+        if not source.is_file() or source.suffix.lower() != ".png":
+            QtWidgets.QMessageBox.warning(self, "Choose PNG", "Select a valid PNG image.")
+            return
+        try:
+            import shutil
+            texture_dir = rp / "textures" / "items"
+            texture_dir.mkdir(parents=True, exist_ok=True)
+            target = texture_dir / (key + ".png")
+            if target.exists():
+                answer = QtWidgets.QMessageBox.question(
+                    self, "Replace texture?", "A texture with this key already exists. Replace it?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+                if answer != QtWidgets.QMessageBox.Yes:
+                    return
+            shutil.copyfile(str(source), str(target))
+            atlas = self.atlas_data()
+            atlas["texture_data"][key] = {"textures": "textures/items/" + key}
+            path = self.atlas_path()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(atlas, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            QtWidgets.QMessageBox.information(
+                self, "Registered", "Texture copied to:\n" + str(target) +
+                "\n\nAtlas updated:\n" + str(path))
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Registration failed", str(exc))

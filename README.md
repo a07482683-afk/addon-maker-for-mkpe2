@@ -12,10 +12,10 @@ A desktop GUI for creating Minecraft Bedrock Edition add-on projects.
 - Event Sheet export to JSON and starter JavaScript Script API generation.
 - Direct code tabs for Bedrock JSON, JavaScript Script API, Molang and mcfunction.
 - Item editor: generates a starter Bedrock item JSON file with identifier, display name, creative category, icon key, stack size and foil setting.
-- Block editor: generates a starter Bedrock block JSON file with identifier, display name, creative category, mining time, friction, light emission and map color.
+- Block editor: generates a starter Bedrock block JSON file with identifier, display name, creative category, mining time, friction, light emission and map color.\n- Armor editor: creates wearable item definitions with slot, protection and durability settings.\n- Resource Pack Texture Registry: copies PNG icons into RP/textures/items and merges keys into textures/item_texture.json without discarding existing atlas entries.
 - Windows x64 build workflow via GitHub Actions.
 
-The item and block editors save starter JSON into the selected BP/items or BP/blocks folder. The item icon key must be registered in the resource pack texture atlas separately; the editor does not generate textures yet. These are starter definitions, not a full Bedrock schema validator.\n\nThe event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
+The item, armor and block editors save starter JSON into the selected Behavior Pack. The texture registry copies PNG files into the selected Resource Pack and updates the item texture atlas while preserving existing entries. Definitions are starter templates and should be checked against the target Bedrock version.\n\nThe event-to-JavaScript generator creates starter code for the selected event/action rows. Check event availability and API names against the Script API version enabled by the target Bedrock world; this is not a full compiler for every possible Bedrock event.
 
 ## Planned next phases
 

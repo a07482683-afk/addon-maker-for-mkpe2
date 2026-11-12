@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import shutil
 from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
 
@@ -182,6 +183,14 @@ class MeshView(QtWidgets.QWidget):
         self.mesh = mesh
         self.update()
 
+    def reset_view(self):
+        self.yaw, self.pitch, self.zoom = -35.0, 20.0, 1.0
+        self.update()
+
+    def game_view(self):
+        self.yaw, self.pitch, self.zoom = -45.0, 28.0, 1.15
+        self.update()
+
     def mousePressEvent(self, event):
         self.last_pos = event.pos()
 
@@ -236,22 +245,39 @@ class MeshView(QtWidgets.QWidget):
 
 
 class ModelWorkspace(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
-        self.setWindowTitle("3D Models & Bedrock Geometry")
+        self.setWindowTitle("3D-редактор — предпросмотр Minecraft")
         self.resize(1080, 760)
         self.mesh = None
+        self.project_path = Path(project_path) if project_path else None
+        self.model_file = None
         root = QtWidgets.QVBoxLayout(self)
         bar = QtWidgets.QHBoxLayout()
-        self.path_label = QtWidgets.QLabel("No model imported")
-        button = QtWidgets.QPushButton("Import OBJ / FBX…")
+        self.path_label = QtWidgets.QLabel("Модель ещё не загружена")
+        button = QtWidgets.QPushButton("＋ Импортировать OBJ / FBX…")
         button.clicked.connect(self.choose_model)
+        game_view = QtWidgets.QPushButton("Вид как в Minecraft")
+        game_view.clicked.connect(lambda: self.view.game_view())
+        reset_view = QtWidgets.QPushButton("Сбросить поворот")
+        reset_view.clicked.connect(lambda: self.view.reset_view())
         bar.addWidget(button)
+        bar.addWidget(game_view)
+        bar.addWidget(reset_view)
         bar.addWidget(self.path_label, 1)
         root.addLayout(bar)
         self.view = MeshView()
         root.addWidget(self.view, 1)
-        geometry_box = QtWidgets.QGroupBox("Bedrock geometry")
+        preview_bar = QtWidgets.QHBoxLayout()
+        preview_note = QtWidgets.QLabel("ЛКМ — вращать модель • Колесо — приближать и отдалять")
+        preview_note.setStyleSheet("color:#aab6c8;")
+        preview_bar.addWidget(preview_note)
+        preview_bar.addStretch(1)
+        snapshot = QtWidgets.QPushButton("Сохранить снимок 3D-вида…")
+        snapshot.clicked.connect(self.save_preview)
+        preview_bar.addWidget(snapshot)
+        root.addLayout(preview_bar)
+        geometry_box = QtWidgets.QGroupBox("Геометрия Minecraft Bedrock")
         geometry_form = QtWidgets.QFormLayout(geometry_box)
         self.geometry_id = QtWidgets.QLineEdit("geometry.custom_model")
         self.texture_width = QtWidgets.QSpinBox()
@@ -260,17 +286,17 @@ class ModelWorkspace(QtWidgets.QDialog):
         self.texture_height = QtWidgets.QSpinBox()
         self.texture_height.setRange(16, 1024)
         self.texture_height.setValue(64)
-        geometry_form.addRow("Identifier", self.geometry_id)
+        geometry_form.addRow("Идентификатор геометрии", self.geometry_id)
         texture_row = QtWidgets.QHBoxLayout()
         texture_row.addWidget(self.texture_width)
         texture_row.addWidget(QtWidgets.QLabel("×"))
         texture_row.addWidget(self.texture_height)
-        geometry_form.addRow("Texture size", texture_row)
-        save_geometry = QtWidgets.QPushButton("Export Geometry JSON…")
+        geometry_form.addRow("Размер текстуры", texture_row)
+        save_geometry = QtWidgets.QPushButton("Экспортировать Geometry JSON…")
         save_geometry.clicked.connect(self.save_geometry)
         geometry_form.addRow(save_geometry)
         root.addWidget(geometry_box)
-        animation_box = QtWidgets.QGroupBox("Simple animation keyframes")
+        animation_box = QtWidgets.QGroupBox("Простая анимация и ключевые кадры")
         animation_form = QtWidgets.QFormLayout(animation_box)
         self.animation_id = QtWidgets.QLineEdit("animation.custom_model.rotate")
         self.duration = QtWidgets.QDoubleSpinBox()
@@ -281,11 +307,11 @@ class ModelWorkspace(QtWidgets.QDialog):
         self.angle = QtWidgets.QDoubleSpinBox()
         self.angle.setRange(-360.0, 360.0)
         self.angle.setValue(30.0)
-        animation_form.addRow("Animation identifier", self.animation_id)
-        animation_form.addRow("Duration (seconds)", self.duration)
-        animation_form.addRow("Rotation axis", self.axis)
-        animation_form.addRow("End rotation (degrees)", self.angle)
-        save_animation = QtWidgets.QPushButton("Export Animation JSON…")
+        animation_form.addRow("Идентификатор анимации", self.animation_id)
+        animation_form.addRow("Длительность (секунды)", self.duration)
+        animation_form.addRow("Ось вращения", self.axis)
+        animation_form.addRow("Угол поворота (градусы)", self.angle)
+        save_animation = QtWidgets.QPushButton("Экспортировать Animation JSON…")
         save_animation.clicked.connect(self.save_animation)
         animation_form.addRow(save_animation)
         root.addWidget(animation_box)
@@ -294,40 +320,60 @@ class ModelWorkspace(QtWidgets.QDialog):
         note.setStyleSheet("color:#e6c27a;")
         root.addWidget(note)
 
+    def save_preview(self):
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить снимок 3D-модели", "model-preview.png", "PNG (*.png)")
+        if filename:
+            if not filename.lower().endswith(".png"):
+                filename += ".png"
+            if not self.view.grab().save(filename, "PNG"):
+                QtWidgets.QMessageBox.warning(self, "Ошибка", "Не удалось сохранить снимок.")
+            else:
+                QtWidgets.QMessageBox.information(self, "Готово", "Снимок сохранён: " + filename)
+
     def choose_model(self):
-        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Import 3D model", "", "3D models (*.obj *.fbx)")
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Импортировать 3D-модель", "", "3D-модели (*.obj *.fbx)")
         if not filename:
             return
         try:
-            self.mesh = import_mesh(filename)
+            source = Path(filename)
+            if self.project_path:
+                model_dir = self.project_path / "Models"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                saved = model_dir / source.name
+                if source.resolve() != saved.resolve():
+                    shutil.copy2(str(source), str(saved))
+                self.model_file = saved
+            else:
+                self.model_file = source
+            self.mesh = import_mesh(str(self.model_file))
             self.view.set_mesh(self.mesh)
-            self.path_label.setText(Path(filename).name)
+            self.path_label.setText(self.model_file.name)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Import failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка импорта", str(exc))
 
     def save_geometry(self):
         if not self.mesh:
-            QtWidgets.QMessageBox.warning(self, "No model", "Import a model first.")
+            QtWidgets.QMessageBox.warning(self, "Нет модели", "Сначала импортируйте модель.")
             return
-        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Bedrock geometry", "geometry.custom_model.json", "JSON files (*.json)")
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить геометрию Bedrock", "geometry.custom_model.json", "JSON files (*.json)")
         if not filename:
             return
         try:
             data = bedrock_geometry(self.mesh, self.geometry_id.text().strip() or "geometry.custom_model",
                                     self.texture_width.value(), self.texture_height.value())
             Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Bedrock geometry exported to:\n" + filename)
+            QtWidgets.QMessageBox.information(self, "Сохранено", "Bedrock geometry exported to:\n" + filename)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка экспорта", str(exc))
 
     def save_animation(self):
-        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Bedrock animation", "animation.custom_model.json", "JSON files (*.json)")
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить анимацию Bedrock", "animation.custom_model.json", "JSON files (*.json)")
         if not filename:
             return
         try:
             data = bedrock_animation(self.animation_id.text().strip() or "animation.custom_model.rotate",
                                      self.duration.value(), self.axis.currentText(), self.angle.value())
             Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Starter animation JSON exported to:\n" + filename)
+            QtWidgets.QMessageBox.information(self, "Сохранено", "Starter animation JSON exported to:\n" + filename)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка экспорта", str(exc))

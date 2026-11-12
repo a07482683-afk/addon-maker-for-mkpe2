@@ -5,10 +5,12 @@ from PySide2 import QtWidgets
 from editors import TextureEditor, LogicWorkspace
 from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistryEditor
 from model_editor import ModelWorkspace
-from mcaddon_export import export_mcaddon
+from mcaddon_export import export_mcaddon, validate_mcaddon
+from project_store import save_project_settings, load_project_settings, validate_project_folder
+from examples import create_learning_examples
 
 APP_NAME = "Addon Maker для MCPE"
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.7.0"
 
 def write_json(path, data):
     import json
@@ -39,6 +41,8 @@ def create_project(location, name, description):
     write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP"))
     write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
     (project / "README.txt").write_text(safe + chr(10) + "BP — поведение и предметы." + chr(10) + "RP — текстуры и ресурсы." + chr(10), encoding="utf-8")
+    create_learning_examples(project)
+    save_project_settings(project)
     return project
 
 class ProjectDialog(QtWidgets.QDialog):
@@ -78,6 +82,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.project_path = None
+        self.settings = QtWidgets.QSettings("AddonMaker", "MCPE")
         self.setWindowTitle(APP_NAME + " • " + APP_VERSION)
         self.resize(1040, 720)
         self.setMinimumSize(850, 600)
@@ -91,6 +96,12 @@ class MainWindow(QtWidgets.QMainWindow):
         QPushButton#Primary { background:#667af5; border:0; color:white; font-weight:700; }
         """)
         self.build_ui()
+        recent = self.settings.value("recent_project", "")
+        if recent and Path(recent).is_dir():
+            try:
+                self.set_project(validate_project_folder(recent))
+            except Exception:
+                pass
 
     def build_ui(self):
         root = QtWidgets.QWidget()
@@ -135,6 +146,7 @@ class MainWindow(QtWidgets.QMainWindow):
             ("3D-модель", "Открыть и посмотреть модель", "model"),
             ("События", "Настроить действия и код", "logic"),
             ("Добавить PNG в игру", "Подключить текстуру к проекту", "registry"),
+            ("Учебные примеры", "Изучить предметы, блоки и биомы", "examples"),
         ]
         for i, (name, description, key) in enumerate(cards):
             card = QtWidgets.QFrame()
@@ -175,7 +187,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusBar().showMessage("Сначала создайте или откройте проект.")
 
     def set_project(self, path):
-        self.project_path = Path(path)
+        self.project_path = validate_project_folder(path)
+        self.project_settings = load_project_settings(self.project_path)
+        self.settings.setValue("recent_project", str(self.project_path))
+        save_project_settings(self.project_path, self.project_settings)
         self.project_label.setText("ТЕКУЩИЙ ПРОЕКТ: " + str(self.project_path))
         self.statusBar().showMessage("Проект открыт. Выбирайте нужный редактор.")
 
@@ -214,19 +229,30 @@ class MainWindow(QtWidgets.QMainWindow):
         bp = str(self.project_path / "BP") if self.project_path else ""
         rp = str(self.project_path / "RP") if self.project_path else ""
         if key == "item":
-            ItemEditor(self, bp).exec_()
+            ItemEditor(self, bp, rp).exec_()
         elif key == "block":
-            BlockEditor(self, bp).exec_()
+            BlockEditor(self, bp, rp).exec_()
         elif key == "armor":
-            ArmorEditor(self, bp).exec_()
+            ArmorEditor(self, bp, rp).exec_()
         elif key == "texture":
-            TextureEditor(self).exec_()
+            TextureEditor(self, str(self.project_path)).exec_()
         elif key == "model":
-            ModelWorkspace(self).exec_()
+            ModelWorkspace(self, str(self.project_path) if self.project_path else None).exec_()
         elif key == "logic":
-            LogicWorkspace(self).exec_()
+            LogicWorkspace(self, str(self.project_path)).exec_()
         elif key == "registry":
             TextureRegistryEditor(self, rp).exec_()
+        elif key == "examples":
+            self.open_examples()
+
+    def open_examples(self):
+        if not self.ensure_project():
+            return
+        folder = self.project_path / "Examples"
+        if not folder.exists():
+            create_learning_examples(self.project_path)
+        QtWidgets.QMessageBox.information(self, "Учебные примеры",
+            "Примеры созданы в папке Examples вашего проекта.\\n\\nТам есть предмет, блок, учебная структура биома и события. Откройте JSON-файлы и изучите поле _lesson.")
 
     def export_project(self):
         if not self.ensure_project():
@@ -237,7 +263,12 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             result = export_mcaddon(self.project_path, target)
-            QtWidgets.QMessageBox.information(self, "Аддон готов!", "Файл создан:\n" + str(result) + "\n\nОткройте его на устройстве с Minecraft Bedrock.")
+            report = validate_mcaddon(result)
+            QtWidgets.QMessageBox.information(self, "Проверка завершена",
+                "Архив создан и прошёл внутреннюю проверку.\\n" + str(result) +
+                "\\n\\nВнутри: " + ", ".join(report["packs"]) +
+                "\\nJSON-файлов проверено: " + str(report["json_files"]) +
+                "\\n\\nТеперь откройте файл на устройстве с Minecraft Bedrock. Программа не может проверить импорт в игру автоматически на этом компьютере.")
             self.statusBar().showMessage("Экспорт завершён.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Не удалось экспортировать", str(exc))

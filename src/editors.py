@@ -13,7 +13,7 @@ class TextureCanvas(QtWidgets.QWidget):
         self.layers = [{"name": "Layer 1", "image": base, "visible": True, "opacity": 1.0}]
         self.active_layer = 0
         self.color = QtGui.QColor("#6f83ff")
-        self.tool = "Pencil"
+        self.tool = "Карандаш"
         self.grid = True
         self.last = None
         self.undo_stack = []
@@ -170,9 +170,10 @@ class TextureCanvas(QtWidgets.QWidget):
 
 
 class TextureEditor(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
-        self.setWindowTitle("Texture Studio")
+        self.setWindowTitle("Редактор текстур — рисование иконок и текстур")
+        self.project_path = Path(project_path) if project_path else None
         self.resize(1180, 760)
         root = QtWidgets.QVBoxLayout(self)
         top = QtWidgets.QHBoxLayout()
@@ -181,16 +182,16 @@ class TextureEditor(QtWidgets.QDialog):
             self.size_box.addItem(size)
         self.size_box.setCurrentIndex(2)
         self.size_box.currentIndexChanged.connect(self.change_size)
-        top.addWidget(QtWidgets.QLabel("Canvas size"))
+        top.addWidget(QtWidgets.QLabel("Размер холста"))
         top.addWidget(self.size_box)
-        self.grid_box = QtWidgets.QCheckBox("Pixel grid")
+        self.grid_box = QtWidgets.QCheckBox("Сетка пикселей")
         self.grid_box.setChecked(True)
         self.grid_box.toggled.connect(self.toggle_grid)
         top.addWidget(self.grid_box)
         top.addStretch(1)
-        for label, callback in (("Undo", self.undo), ("Open PNG", self.open_image),
-                                ("Open project", self.open_project), ("Save project", self.save_project),
-                                ("Export PNG", self.save_image)):
+        for label, callback in (("Отменить", self.undo), ("Открыть PNG", self.open_image),
+                                ("Открыть проект", self.open_project), ("Сохранить проект", self.save_project),
+                                ("Экспорт PNG", self.save_image)):
             button = QtWidgets.QPushButton(label)
             button.clicked.connect(callback)
             top.addWidget(button)
@@ -199,11 +200,11 @@ class TextureEditor(QtWidgets.QDialog):
         body = QtWidgets.QHBoxLayout()
         tools = QtWidgets.QVBoxLayout()
         self.canvas = TextureCanvas()
-        for tool in ("Pencil", "Eraser", "Fill", "Eyedropper"):
+        for tool in ("Карандаш", "Ластик", "Заливка", "Пипетка"):
             b = QtWidgets.QPushButton(tool)
             b.clicked.connect(lambda checked=False, t=tool: self.set_tool(t))
             tools.addWidget(b)
-        color_btn = QtWidgets.QPushButton("Choose color")
+        color_btn = QtWidgets.QPushButton("Выбрать цвет")
         color_btn.clicked.connect(self.choose_color)
         tools.addWidget(color_btn)
         self.color_preview = QtWidgets.QLabel("  ")
@@ -215,19 +216,19 @@ class TextureEditor(QtWidgets.QDialog):
         body.addWidget(self.canvas, 1)
 
         layer_panel = QtWidgets.QVBoxLayout()
-        layer_panel.addWidget(QtWidgets.QLabel("LAYERS"))
+        layer_panel.addWidget(QtWidgets.QLabel("СЛОИ"))
         self.layer_list = QtWidgets.QListWidget()
         self.layer_list.currentRowChanged.connect(self.select_layer)
         layer_panel.addWidget(self.layer_list, 1)
-        for label, callback in (("+ Add", self.add_layer), ("Duplicate", self.duplicate_layer),
-                                ("Rename", self.rename_layer), ("− Delete", self.delete_layer),
-                                ("Move up", lambda: self.move_layer(1)),
-                                ("Move down", lambda: self.move_layer(-1))):
+        for label, callback in (("＋ Добавить", self.add_layer), ("Дублировать", self.duplicate_layer),
+                                ("Переименовать", self.rename_layer), ("− Удалить", self.delete_layer),
+                                ("Вверх", lambda: self.move_layer(1)),
+                                ("Вниз", lambda: self.move_layer(-1))):
             button = QtWidgets.QPushButton(label)
             button.clicked.connect(callback)
             layer_panel.addWidget(button)
         self.layer_list.itemChanged.connect(self.layer_visibility_changed)
-        layer_panel.addWidget(QtWidgets.QLabel("Layer opacity"))
+        layer_panel.addWidget(QtWidgets.QLabel("Непрозрачность слоя"))
         self.opacity_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
         self.opacity_slider.setRange(0, 100)
         self.opacity_slider.setValue(100)
@@ -235,7 +236,7 @@ class TextureEditor(QtWidgets.QDialog):
         layer_panel.addWidget(self.opacity_slider)
         body.addLayout(layer_panel)
         root.addLayout(body, 1)
-        self.status = QtWidgets.QLabel("Pencil • 64 × 64 • Transparent background")
+        self.status = QtWidgets.QLabel("Карандаш • 64 × 64 • Прозрачный фон")
         root.addWidget(self.status)
         self.refresh_layers()
 
@@ -274,7 +275,7 @@ class TextureEditor(QtWidgets.QDialog):
 
     def rename_layer(self):
         layer = self.canvas.layers[self.canvas.active_layer]
-        name, ok = QtWidgets.QInputDialog.getText(self, "Rename layer", "Layer name:", text=layer["name"])
+        name, ok = QtWidgets.QInputDialog.getText(self, "Переименовать слой", "Название слоя:", text=layer["name"])
         if ok and name.strip():
             layer["name"] = name.strip()
             self.refresh_layers()
@@ -294,7 +295,7 @@ class TextureEditor(QtWidgets.QDialog):
         if self.canvas.remove_layer():
             self.refresh_layers()
         else:
-            QtWidgets.QMessageBox.information(self, "Layers", "A texture must keep at least one layer.")
+            QtWidgets.QMessageBox.information(self, "Слои", "У текстуры должен остаться хотя бы один слой.")
 
     def move_layer(self, direction):
         self.canvas.move_layer(direction)
@@ -305,27 +306,28 @@ class TextureEditor(QtWidgets.QDialog):
         self.refresh_layers()
 
     def set_tool(self, tool):
-        self.canvas.tool = tool
+        internal = {"Карандаш": "Pencil", "Ластик": "Eraser", "Заливка": "Fill", "Пипетка": "Eyedropper"}
+        self.canvas.tool = internal.get(tool, "Pencil")
         self.status.setText(tool + " • %d × %d" % (self.canvas.image.width(), self.canvas.image.height()))
 
     def change_size(self, index):
         size = (16,32,64,128,256)[index]
         self.canvas.set_size(size, size)
-        self.status.setText("Canvas resized to %d × %d" % (size,size))
+        self.status.setText("Размер холста: %d × %d" % (size,size))
 
     def toggle_grid(self, enabled):
         self.canvas.grid = enabled
         self.canvas.update()
 
     def choose_color(self):
-        color = QtWidgets.QColorDialog.getColor(self.canvas.color, self, "Texture color", QtWidgets.QColorDialog.ShowAlphaChannel)
+        color = QtWidgets.QColorDialog.getColor(self.canvas.color, self, "Цвет текстуры", QtWidgets.QColorDialog.ShowAlphaChannel)
         if color.isValid():
             self.canvas.color = color
             self.color_preview.setStyleSheet("background:%s;border:1px solid #555;border-radius:5px;" % color.name())
-            self.status.setText("Color: " + color.name())
+            self.status.setText("Цвет: " + color.name())
 
     def open_image(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open texture", "", "Images (*.png *.jpg *.bmp)")
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть текстуру", "", "Images (*.png *.jpg *.bmp)")
         if path:
             image = QtGui.QImage(path)
             if not image.isNull():
@@ -334,25 +336,27 @@ class TextureEditor(QtWidgets.QDialog):
                 self.canvas.image = image.convertToFormat(QtGui.QImage.Format_ARGB32)
                 self.canvas.update()
                 self.refresh_layers()
-                self.status.setText("Imported as new layer: " + Path(path).name)
+                self.status.setText("Добавлен новый слой: " + Path(path).name)
 
     def save_image(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export texture", "texture.png", "PNG image (*.png)")
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспорт текстуры", "texture.png", "PNG image (*.png)")
         if path:
             if not path.lower().endswith(".png"):
                 path += ".png"
             if self.canvas.composite().save(path, "PNG"):
-                self.status.setText("Exported merged texture: " + path)
+                self.status.setText("Текстура PNG сохранена: " + path)
             else:
-                QtWidgets.QMessageBox.warning(self, "Export failed", "Could not save this PNG file.")
+                QtWidgets.QMessageBox.warning(self, "Export failed", "Не удалось сохранить PNG-файл.")
 
     def save_project(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save layered texture project", "texture.tstudio", "Texture Studio (*.tstudio)")
+        default = str(self.project_path / "TextureProjects" / "texture.tstudio") if self.project_path else "texture.tstudio"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить проект текстуры", default, "Проект текстуры (*.tstudio)")
         if not path:
             return
         if not path.lower().endswith(".tstudio"):
             path += ".tstudio"
         try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
                 metadata = {"format_version": 1, "active_layer": self.canvas.active_layer, "layers": []}
                 for index, layer in enumerate(self.canvas.layers):
@@ -364,12 +368,13 @@ class TextureEditor(QtWidgets.QDialog):
                                                 "opacity": layer["opacity"],
                                                 "file": "layers/layer_%03d.png" % index})
                 archive.writestr("project.json", json.dumps(metadata, indent=2, ensure_ascii=False))
-            self.status.setText("Saved layered project: " + path)
+            self.status.setText("Проект текстуры сохранён: " + path)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
 
     def open_project(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Open texture project", "", "Texture Studio (*.tstudio)")
+        start = str(self.project_path / "TextureProjects") if self.project_path and (self.project_path / "TextureProjects").is_dir() else ""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть проект текстуры", start, "Проект текстуры (*.tstudio)")
         if not path:
             return
         try:
@@ -390,139 +395,216 @@ class TextureEditor(QtWidgets.QDialog):
                 self.canvas.undo_stack = []
                 self.canvas.update()
                 self.refresh_layers()
-                self.status.setText("Opened layered project: " + Path(path).name)
+                self.status.setText("Открыт проект текстуры: " + Path(path).name)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Open failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка открытия", str(exc))
 
 
 class EventSheetEditor(QtWidgets.QWidget):
     TRIGGERS = {
-        "Player spawns": "playerSpawn",
-        "Player interacts with block": "playerInteractWithBlock",
-        "Entity dies": "entityDie"
+        "Игрок появляется в мире": "playerSpawn",
+        "Игрок уходит из мира": "playerLeave",
+        "Игрок использует предмет": "itemUse",
+        "Игрок использует предмет на блоке": "itemUseOn",
+        "Игрок ломает блок": "playerBreakBlock",
+        "Игрок ставит блок": "playerPlaceBlock",
+        "Игрок взаимодействует с блоком": "playerInteractWithBlock",
+        "Игрок взаимодействует с сущностью": "playerInteractWithEntity",
+        "Игрок атакует сущность": "entityHurt",
+        "Сущность получает урон": "entityHurt",
+        "Сущность умирает": "entityDie",
+        "Сущность появляется": "entitySpawn",
+        "Снаряд попадает в блок": "projectileHitBlock",
+        "Снаряд попадает в сущность": "projectileHitEntity",
+        "Предмет выброшен": "itemStopUse",
+        "Игрок начинает использовать предмет": "itemStartUse",
+        "Игрок заканчивает использовать предмет": "itemStopUse",
+        "Игрок прыгает": "entityJump",
+        "Игрок садится на ездового моба": "entityMount",
+        "Игрок слезает с ездового моба": "entityDismount",
+        "Погода меняется": "weatherChange",
+        "Время суток меняется": "timeOfDay",
+        "Сущность входит в измерение": "entityDimensionChange",
+        "Игрок подбирает предмет": "playerInventoryItemChange",
+        "Игрок меняет слот": "playerHotbarSelectedSlotChange",
+        "Игрок начинает приседать": "playerButtonInput",
+        "Игрок спит": "playerInteractWithBlock",
+        "Игрок возрождается": "playerSpawn"
     }
+    ACTIONS = [
+        "Отправить сообщение в чат", "Выполнить команду", "Выдать предмет",
+        "Добавить эффект", "Воспроизвести звук", "Создать частицу",
+        "Телепортировать игрока", "Добавить тег", "Убрать тег",
+        "Изменить погоду", "Изменить время", "Показать название",
+        "Удалить предмет из руки", "Добавить опыт", "Выполнить JavaScript"
+    ]
+    COLORS = ["#26364a", "#3a2e4c", "#25433e", "#4a352d", "#3b3d27", "#293d4a"]
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
+        self.project_path = Path(project_path) if project_path else None
+        self.setWindowTitle("Конструктор событий — WHEN → DO")
         root = QtWidgets.QVBoxLayout(self)
         bar = QtWidgets.QHBoxLayout()
-        title = QtWidgets.QLabel("Visual Event Sheet")
+        title = QtWidgets.QLabel("Конструктор событий")
         title.setStyleSheet("font-size:18pt;font-weight:700;")
         bar.addWidget(title)
         bar.addStretch(1)
-        add = QtWidgets.QPushButton("+ Add event")
+        add = QtWidgets.QPushButton("＋ Добавить событие")
         add.clicked.connect(self.add_event)
-        bar.addWidget(add)
-        save = QtWidgets.QPushButton("Save event JSON")
+        save = QtWidgets.QPushButton("Сохранить")
         save.clicked.connect(self.save_sheet)
-        bar.addWidget(save)
-        generate = QtWidgets.QPushButton("Generate JavaScript")
+        generate = QtWidgets.QPushButton("Создать JavaScript")
         generate.clicked.connect(self.generate_javascript)
-        bar.addWidget(generate)
+        bar.addWidget(add); bar.addWidget(save); bar.addWidget(generate)
         root.addLayout(bar)
-        hint = QtWidgets.QLabel("Choose a real Bedrock event and an action. Export the event sheet as JSON or generate a JavaScript Script API starter.")
+        hint = QtWidgets.QLabel("WHEN — что произошло. DO — что должна сделать игра. Можно добавить сколько угодно правил и менять цвет каждой карточки.")
         hint.setWordWrap(True)
         root.addWidget(hint)
-        self.rows = QtWidgets.QVBoxLayout()
-        self.rows.setSpacing(8)
-        root.addLayout(self.rows)
-        root.addStretch(1)
-        self.add_event()
+        self.scroll = QtWidgets.QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.rows_host = QtWidgets.QWidget()
+        self.rows = QtWidgets.QVBoxLayout(self.rows_host)
+        self.rows.setSpacing(9)
+        self.rows.addStretch(1)
+        self.scroll.setWidget(self.rows_host)
+        root.addWidget(self.scroll, 1)
+        if not self.load_existing():
+            self.add_event()
 
-    def add_event(self):
+    def add_event(self, data=None):
+        data = data or {}
         frame = QtWidgets.QFrame()
-        frame.setStyleSheet("QFrame{background:#202631;border:1px solid #3a4352;border-radius:8px;} QLabel{border:0;}")
+        index = max(0, self.rows.count()-1)
+        frame.setStyleSheet("QFrame{background:%s;border:1px solid #58657a;border-radius:9px;} QLabel{border:0;background:transparent;}" % self.COLORS[index % len(self.COLORS)])
         layout = QtWidgets.QGridLayout(frame)
         trigger = QtWidgets.QComboBox()
         trigger.addItems(list(self.TRIGGERS.keys()))
-        action_type = QtWidgets.QComboBox()
-        action_type.addItems(["Send chat message", "Run command", "Custom JavaScript"])
-        value = QtWidgets.QLineEdit("Hello from my add-on!")
-        value.setPlaceholderText("Message, command, or JS statement")
-        layout.addWidget(QtWidgets.QLabel("WHEN"),0,0)
-        layout.addWidget(trigger,0,1)
-        layout.addWidget(QtWidgets.QLabel("DO"),1,0)
-        action_row = QtWidgets.QHBoxLayout()
-        action_row.addWidget(action_type)
-        action_row.addWidget(value,1)
-        layout.addLayout(action_row,1,1)
-        remove = QtWidgets.QPushButton("Remove")
-        remove.clicked.connect(lambda: self.remove_event(frame))
-        layout.addWidget(remove,0,2,2,1)
+        action = QtWidgets.QComboBox()
+        action.addItems(self.ACTIONS)
+        if data.get("trigger") in self.TRIGGERS:
+            trigger.setCurrentText(data["trigger"])
+        if data.get("action") in self.ACTIONS:
+            action.setCurrentText(data["action"])
+        value = QtWidgets.QLineEdit(str(data.get("value", "Привет!")))
+        value.setPlaceholderText("Текст, команда, предмет или значение")
+        layout.addWidget(QtWidgets.QLabel("КОГДА"), 0, 0)
+        layout.addWidget(trigger, 0, 1)
+        layout.addWidget(QtWidgets.QLabel("ТОГДА"), 1, 0)
+        layout.addWidget(action, 1, 1)
+        layout.addWidget(value, 1, 2)
+        color_btn = QtWidgets.QPushButton("Цвет")
+        color_btn.clicked.connect(lambda checked=False, card=frame: self.choose_row_color(card))
+        remove = QtWidgets.QPushButton("Удалить")
+        remove.clicked.connect(lambda checked=False, card=frame: self.remove_event(card))
+        layout.addWidget(color_btn, 0, 2)
+        layout.addWidget(remove, 0, 3, 2, 1)
         frame.trigger_box = trigger
-        frame.action_box = action_type
+        frame.action_box = action
         frame.value_edit = value
-        self.rows.addWidget(frame)
+        self.rows.insertWidget(self.rows.count()-1, frame)
+        return frame
+
+    def choose_row_color(self, frame):
+        color = QtWidgets.QColorDialog.getColor(QtGui.QColor("#26364a"), self, "Выберите цвет карточки")
+        if color.isValid():
+            frame.setStyleSheet("QFrame{background:%s;border:1px solid #8998b0;border-radius:9px;} QLabel{border:0;background:transparent;}" % color.name())
 
     def remove_event(self, frame):
         self.rows.removeWidget(frame)
         frame.deleteLater()
 
     def event_data(self):
-        events = []
+        result = []
         for i in range(self.rows.count()):
             frame = self.rows.itemAt(i).widget()
-            if frame:
-                events.append({"trigger": frame.trigger_box.currentText(),
+            if frame and hasattr(frame, "trigger_box"):
+                result.append({"trigger": frame.trigger_box.currentText(),
                                "action": frame.action_box.currentText(),
                                "value": frame.value_edit.text()})
-        return events
+        return result
+
+    def load_existing(self):
+        path = self.project_path / "BP" / "scripts" / "events.json" if self.project_path else None
+        if not path or not path.is_file():
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8-sig"))
+            for item in data.get("events", []):
+                self.add_event(item)
+            return bool(data.get("events"))
+        except Exception:
+            return False
 
     def save_sheet(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save event sheet", "events.json", "JSON (*.json)")
-        if path:
-            if not path.lower().endswith(".json"):
-                path += ".json"
-            try:
-                Path(path).write_text(json.dumps({"format_version":1,"events":self.event_data()},indent=2,ensure_ascii=False),encoding="utf-8")
-                QtWidgets.QMessageBox.information(self,"Saved","Event sheet JSON saved.")
-            except Exception as exc:
-                QtWidgets.QMessageBox.critical(self,"Save failed",str(exc))
+        default = str(self.project_path / "BP" / "scripts" / "events.json") if self.project_path else "events.json"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить правила событий", default, "JSON (*.json)")
+        if not path:
+            return
+        if not path.lower().endswith(".json"):
+            path += ".json"
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(json.dumps({"format_version": 1, "events": self.event_data()}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            QtWidgets.QMessageBox.information(self, "Сохранено", "Правила событий сохранены.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
 
     def generated_script(self):
         lines = ['import { world } from "@minecraft/server";', ""]
-        for index, event in enumerate(self.event_data(), 1):
-            trigger = self.TRIGGERS[event["trigger"]]
-            if event["trigger"] == "Entity dies":
-                subject = "event.deadEntity"
-                player_decl = ""
-            else:
-                subject = "event.player"
-                player_decl = "  const player = event.player;\n"
-            lines.append("// Event %d: %s" % (index, event["trigger"]))
+        for index, item in enumerate(self.event_data(), 1):
+            trigger = self.TRIGGERS[item["trigger"]]
+            lines.append("// Правило %d: %s" % (index, item["trigger"]))
             lines.append("world.afterEvents.%s.subscribe((event) => {" % trigger)
-            if player_decl:
-                lines.append("  const player = event.player;")
-            if event["action"] == "Send chat message":
-                msg = json.dumps(event["value"], ensure_ascii=False)
-                target = "player" if player_decl else "world"
-                lines.append("  %s.sendMessage(%s);" % (target, msg))
-            elif event["action"] == "Run command":
-                command = json.dumps(event["value"], ensure_ascii=False)
-                if player_decl:
-                    lines.append("  player.runCommandAsync(%s);" % command)
-                else:
-                    lines.append("  // Entity-death events do not expose a player command source.")
-                    lines.append("  // Add your own world-level action here.")
+            lines.append("  const player = event.player || event.source;")
+            action, value = item["action"], item["value"]
+            encoded = json.dumps(value, ensure_ascii=False)
+            if action == "Отправить сообщение в чат":
+                lines.append("  if (player && player.sendMessage) player.sendMessage(%s);" % encoded)
+            elif action == "Выполнить команду":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % encoded)
+            elif action == "Выдать предмет":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("give @s " + value + " 1", ensure_ascii=False))
+            elif action == "Добавить эффект":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("effect @s " + value, ensure_ascii=False))
+            elif action == "Воспроизвести звук":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("playsound " + value + " @s", ensure_ascii=False))
+            elif action == "Создать частицу":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("particle " + value + " ~ ~1 ~", ensure_ascii=False))
+            elif action == "Телепортировать игрока":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("tp @s " + value, ensure_ascii=False))
+            elif action in ("Добавить тег", "Убрать тег"):
+                cmd = ("tag @s add " if action == "Добавить тег" else "tag @s remove ") + value
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps(cmd, ensure_ascii=False))
+            elif action == "Изменить погоду":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("weather " + value, ensure_ascii=False))
+            elif action == "Изменить время":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("time set " + value, ensure_ascii=False))
+            elif action == "Показать название":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("title @s title " + value, ensure_ascii=False))
+            elif action == "Удалить предмет из руки":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync('clear @s');")
+            elif action == "Добавить опыт":
+                lines.append("  if (player && player.runCommandAsync) player.runCommandAsync(%s);" % json.dumps("xp " + value + " @s", ensure_ascii=False))
             else:
-                lines.append("  // Custom JavaScript supplied in the event sheet:")
-                for raw_line in event["value"].splitlines() or ["// Add code here"]:
-                    lines.append("  " + raw_line)
+                lines.append("  // Добавьте здесь свой код JavaScript: " + value.replace("\\n", " "))
             lines.append("});")
             lines.append("")
         return "\n".join(lines)
 
     def generate_javascript(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Generate Bedrock Script API code", "scripts/main.js", "JavaScript (*.js)")
-        if path:
-            if not path.lower().endswith(".js"):
-                path += ".js"
-            try:
-                Path(path).parent.mkdir(parents=True, exist_ok=True)
-                Path(path).write_text(self.generated_script(), encoding="utf-8")
-                QtWidgets.QMessageBox.information(self, "Generated", "JavaScript starter generated. Check the selected event names against the Script API version used by your world.")
-            except Exception as exc:
-                QtWidgets.QMessageBox.critical(self, "Generation failed", str(exc))
+        default = str(self.project_path / "BP" / "scripts" / "main.js") if self.project_path else "main.js"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить JavaScript", default, "JavaScript (*.js)")
+        if not path:
+            return
+        if not path.lower().endswith(".js"):
+            path += ".js"
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(self.generated_script(), encoding="utf-8")
+            QtWidgets.QMessageBox.information(self, "Готово", "Файл JavaScript создан. Некоторые события требуют проверки по версии Script API Minecraft.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Ошибка", str(exc))
 
 
 class CodeEditor(QtWidgets.QPlainTextEdit):
@@ -541,14 +623,14 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
 
 class LogicWorkspace(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
-        self.setWindowTitle("Logic & Code Workspace")
+        self.setWindowTitle("Конструктор логики и кода")
         self.resize(1000,700)
         root = QtWidgets.QVBoxLayout(self)
         tabs = QtWidgets.QTabWidget()
-        self.events = EventSheetEditor()
-        tabs.addTab(self.events,"Event Sheet")
+        self.events = EventSheetEditor(self, project_path)
+        tabs.addTab(self.events,"События WHEN → DO")
         self.editors = {}
         for lang in ("JSON","JavaScript","Molang","mcfunction"):
             editor = CodeEditor(lang)
@@ -557,7 +639,7 @@ class LogicWorkspace(QtWidgets.QDialog):
         root.addWidget(tabs,1)
         bottom = QtWidgets.QHBoxLayout()
         bottom.addStretch(1)
-        save = QtWidgets.QPushButton("Save current code")
+        save = QtWidgets.QPushButton("Сохранить код")
         save.clicked.connect(lambda: self.save_current(tabs))
         bottom.addWidget(save)
         root.addLayout(bottom)
@@ -575,4 +657,4 @@ class LogicWorkspace(QtWidgets.QDialog):
                 Path(path).write_text(widget.toPlainText(),encoding="utf-8")
                 QtWidgets.QMessageBox.information(self,"Saved","Code file saved.")
             except Exception as exc:
-                QtWidgets.QMessageBox.critical(self,"Save failed",str(exc))
+                QtWidgets.QMessageBox.critical(self,"Ошибка сохранения",str(exc))

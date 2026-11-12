@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from PySide2 import QtCore, QtWidgets
+from PySide2 import QtCore, QtGui, QtWidgets
 
 
 IDENTIFIER_RE = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
@@ -11,11 +11,12 @@ class DefinitionEditor(QtWidgets.QDialog):
     """Small JSON-first editor for one Bedrock content definition."""
 
     folder_name = ""
-    title_text = "Definition"
+    title_text = "Настройки"
     default_namespace = "demo"
 
-    def __init__(self, parent=None, bp_path=None):
+    def __init__(self, parent=None, bp_path=None, rp_path=None):
         super().__init__(parent)
+        self.rp_path = Path(rp_path) if rp_path else None
         self.setWindowTitle(self.title_text)
         self.resize(820, 680)
         root = QtWidgets.QVBoxLayout(self)
@@ -80,12 +81,12 @@ class DefinitionEditor(QtWidgets.QDialog):
         identifier = self.identifier.text().strip()
         if not IDENTIFIER_RE.match(identifier):
             QtWidgets.QMessageBox.warning(
-                self, "Invalid identifier",
+                self, "Неверный ID",
                 "Use lowercase namespace:name, for example demo:crystal_block.")
             return
         bp = Path(self.bp_path.text().strip())
         if not bp.is_dir():
-            QtWidgets.QMessageBox.warning(self, "Choose BP", "Choose an existing Behavior Pack folder first.")
+            QtWidgets.QMessageBox.warning(self, "Выберите папку BP", "Сначала выберите существующую папку Behavior Pack (BP).")
             return
         namespace, name = identifier.split(":", 1)
         safe_name = name.replace("/", "_")
@@ -93,14 +94,79 @@ class DefinitionEditor(QtWidgets.QDialog):
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(json.dumps(self.definition(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Definition saved to:\n" + str(target))
+            QtWidgets.QMessageBox.information(self, "Сохранено", "Definition saved to:\n" + str(target))
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
 
+
+
+class PixelIconCanvas(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(320, 320)
+        self.image = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
+        self.image.fill(QtCore.Qt.transparent)
+        self.color = QtGui.QColor("#65d7ff")
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtGui.QColor("#20242d"))
+        for y in range(16):
+            for x in range(16):
+                if (x + y) % 2 == 0:
+                    painter.fillRect(x*20, y*20, 20, 20, QtGui.QColor("#343a46"))
+        painter.drawImage(self.rect(), self.image)
+        painter.setPen(QtGui.QPen(QtGui.QColor(255,255,255,45), 1))
+        for i in range(17):
+            painter.drawLine(i*20, 0, i*20, 320)
+            painter.drawLine(0, i*20, 320, i*20)
+    def paint_at(self, pos, erase=False):
+        x, y = pos.x() // 20, pos.y() // 20
+        if 0 <= x < 16 and 0 <= y < 16:
+            p = QtGui.QPainter(self.image)
+            p.fillRect(x, y, 1, 1, QtGui.QColor(0, 0, 0, 0) if erase else self.color)
+            p.end()
+            self.update()
+    def mousePressEvent(self, event):
+        self.paint_at(event.pos(), event.button() == QtCore.Qt.RightButton)
+    def mouseMoveEvent(self, event):
+        if event.buttons() & (QtCore.Qt.LeftButton | QtCore.Qt.RightButton):
+            self.paint_at(event.pos(), bool(event.buttons() & QtCore.Qt.RightButton))
+
+
+class PixelIconDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Нарисовать иконку предмета — 16×16")
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(QtWidgets.QLabel("ЛКМ — рисовать. ПКМ — стирать. Иконка сохранится в Resource Pack."))
+        self.canvas = PixelIconCanvas()
+        layout.addWidget(self.canvas, 0, QtCore.Qt.AlignCenter)
+        row = QtWidgets.QHBoxLayout()
+        color = QtWidgets.QPushButton("Выбрать цвет")
+        color.clicked.connect(self.choose_color)
+        clear = QtWidgets.QPushButton("Очистить")
+        clear.clicked.connect(self.clear)
+        row.addWidget(color)
+        row.addWidget(clear)
+        row.addStretch(1)
+        layout.addLayout(row)
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.button(QtWidgets.QDialogButtonBox.Save).setText("Использовать иконку")
+        buttons.button(QtWidgets.QDialogButtonBox.Cancel).setText("Отмена")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+    def choose_color(self):
+        color = QtWidgets.QColorDialog.getColor(self.canvas.color, self, "Цвет пикселя", QtWidgets.QColorDialog.ShowAlphaChannel)
+        if color.isValid():
+            self.canvas.color = color
+    def clear(self):
+        self.canvas.image.fill(QtCore.Qt.transparent)
+        self.canvas.update()
 
 class ItemEditor(DefinitionEditor):
     folder_name = "items"
-    title_text = "Items & Materials Editor"
+    title_text = "Редактор предметов и материалов"
 
     def add_fields(self, form):
         self.stack = QtWidgets.QSpinBox()
@@ -109,11 +175,46 @@ class ItemEditor(DefinitionEditor):
         self.category = QtWidgets.QComboBox()
         self.category.addItems(["items", "equipment", "nature"])
         self.icon = QtWidgets.QLineEdit("my_item")
-        self.foil = QtWidgets.QCheckBox("Glint effect")
-        form.addRow("Creative category", self.category)
-        form.addRow("Texture key", self.icon)
-        form.addRow("Maximum stack", self.stack)
-        form.addRow("Visual effect", self.foil)
+        self.foil = QtWidgets.QCheckBox("Свечение предмета")
+        form.addRow("Категория в творческом режиме", self.category)
+        form.addRow("Имя текстуры", self.icon)
+        form.addRow("Размер стопки", self.stack)
+
+        form.addRow("Эффект свечения", self.foil)
+        self.draw_icon = QtWidgets.QPushButton("Нарисовать иконку 16×16…")
+        self.draw_icon.clicked.connect(self.open_icon_painter)
+        form.addRow("Иконка предмета", self.draw_icon)
+        self.icon_status = QtWidgets.QLabel("Иконка пока не нарисована")
+        form.addRow("", self.icon_status)
+
+    def open_icon_painter(self):
+        dialog = PixelIconDialog(self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        if not self.rp_path or not self.rp_path.is_dir():
+            QtWidgets.QMessageBox.warning(self, "Нет Resource Pack", "Сначала создай или открой проект с папкой RP.")
+            return
+        key = self.icon.text().strip() or self.identifier.text().split(":")[-1]
+        key = re.sub(r"[^a-zA-Z0-9_./-]", "_", key)
+        target = self.rp_path / "textures" / "items" / (key.replace("/", "_") + ".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not dialog.canvas.image.save(str(target), "PNG"):
+            QtWidgets.QMessageBox.critical(self, "Ошибка", "Не удалось сохранить PNG.")
+            return
+        atlas_path = self.rp_path / "textures" / "item_texture.json"
+        atlas = {"resource_pack_name": "addon", "texture_name": "atlas.items", "texture_data": {}}
+        if atlas_path.is_file():
+            try:
+                atlas = json.loads(atlas_path.read_text(encoding="utf-8-sig"))
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Ошибка атласа", "Не удалось прочитать item_texture.json: " + str(exc))
+                return
+        atlas.setdefault("texture_data", {})[key] = {"textures": "textures/items/" + target.stem}
+        atlas_path.parent.mkdir(parents=True, exist_ok=True)
+        atlas_path.write_text(json.dumps(atlas, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+        self.icon.setText(key)
+        self.icon_status.setText("Иконка сохранена: " + str(target))
+
 
     def connect_fields(self):
         for widget, signal in (
@@ -146,7 +247,7 @@ class ItemEditor(DefinitionEditor):
 
 class BlockEditor(DefinitionEditor):
     folder_name = "blocks"
-    title_text = "Blocks Editor"
+    title_text = "Редактор блоков"
 
     def add_fields(self, form):
         self.category = QtWidgets.QComboBox()
@@ -162,11 +263,11 @@ class BlockEditor(DefinitionEditor):
         self.light = QtWidgets.QSpinBox()
         self.light.setRange(0, 15)
         self.map_color = QtWidgets.QLineEdit("#7F7F7F")
-        form.addRow("Creative category", self.category)
-        form.addRow("Mining time (seconds)", self.hardness)
-        form.addRow("Friction", self.friction)
-        form.addRow("Light emission (0–15)", self.light)
-        form.addRow("Map color", self.map_color)
+        form.addRow("Категория в творческом режиме", self.category)
+        form.addRow("Время разрушения (секунды)", self.hardness)
+        form.addRow("Скольжение", self.friction)
+        form.addRow("Излучение света (0–15)", self.light)
+        form.addRow("Цвет на карте", self.map_color)
 
     def connect_fields(self):
         for signal in (
@@ -218,11 +319,11 @@ class ArmorEditor(DefinitionEditor):
         self.stack = QtWidgets.QSpinBox()
         self.stack.setRange(1, 64)
         self.stack.setValue(1)
-        form.addRow("Armor slot", self.slot)
-        form.addRow("Protection", self.protection)
+        form.addRow("Слот брони", self.slot)
+        form.addRow("Защита", self.protection)
         form.addRow("Maximum durability", self.durability)
-        form.addRow("Texture key", self.icon)
-        form.addRow("Maximum stack", self.stack)
+        form.addRow("Имя текстуры", self.icon)
+        form.addRow("Размер стопки", self.stack)
 
     def connect_fields(self):
         for signal in (self.slot.currentTextChanged, self.protection.valueChanged,
@@ -281,7 +382,7 @@ class TextureRegistryEditor(QtWidgets.QDialog):
         root.addLayout(form)
         self.preview = QtWidgets.QPlainTextEdit()
         self.preview.setReadOnly(True)
-        root.addWidget(QtWidgets.QLabel("Atlas entry preview"))
+        root.addWidget(QtWidgets.QLabel("Предпросмотр записи текстуры"))
         root.addWidget(self.preview, 1)
         self.key.textChanged.connect(self.refresh_preview)
         save = QtWidgets.QPushButton("Добавить текстуру в проект")
@@ -334,7 +435,7 @@ class TextureRegistryEditor(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(self, "Invalid key", "Use lowercase letters, digits and underscores.")
             return
         if not rp.is_dir():
-            QtWidgets.QMessageBox.warning(self, "Choose RP", "Select an existing Resource Pack folder.")
+            QtWidgets.QMessageBox.warning(self, "Выберите папку RP", "Выберите существующую папку Resource Pack (RP).")
             return
         if not source.is_file() or source.suffix.lower() != ".png":
             QtWidgets.QMessageBox.warning(self, "Choose PNG", "Select a valid PNG image.")

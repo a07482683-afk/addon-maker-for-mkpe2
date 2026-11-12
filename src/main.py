@@ -41,8 +41,7 @@ def create_project(location, name, description):
     write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
     (project / "README.txt").write_text(
         safe + "\nBehavior Pack: BP/\nResource Pack: RP/\nCreated with " +
-        APP_NAME + " " + APP_VERSION + "
-", encoding="utf-8")
+        APP_NAME + " " + APP_VERSION + "\n", encoding="utf-8")
     return project
 
 class ProjectDialog(QtWidgets.QDialog):

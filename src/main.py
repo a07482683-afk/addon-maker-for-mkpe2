@@ -4,10 +4,10 @@ import uuid
 from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
 from editors import TextureEditor, LogicWorkspace
-from content_editors import ItemEditor, BlockEditor
+from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistryEditor
 
 APP_NAME = "Addon Maker for MCPE"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -111,7 +111,7 @@ class MainWindow(QtWidgets.QMainWindow):
         brand.setObjectName("Brand")
         side.addWidget(brand)
         side.addSpacing(28)
-        for label in ["Dashboard", "My Projects", "Content Editors", "Texture Studio", "Logic & Code", "3D Workspace", "Export"]:
+        for label in ["Dashboard", "My Projects", "Content Editors", "Texture Studio", "Resource Pack Textures", "Logic & Code", "3D Workspace", "Export"]:
             button = QtWidgets.QPushButton(label)
             button.setObjectName("Nav")
             button.clicked.connect(lambda checked=False, n=label: self.show_placeholder(n))
@@ -248,7 +248,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_placeholder(name)
 
     def show_placeholder(self, name):
-        if name == "Dashboard":
+        if name == "Resource Pack Textures":\n            TextureRegistryEditor(self).exec_()\n            return\n        if name == "Dashboard":
             self.statusBar().showMessage("Dashboard")
             return
         QtWidgets.QMessageBox.information(self, name,

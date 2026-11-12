@@ -170,9 +170,10 @@ class TextureCanvas(QtWidgets.QWidget):
 
 
 class TextureEditor(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
         self.setWindowTitle("Редактор текстур — рисование иконок и текстур")
+        self.project_path = Path(project_path) if project_path else None
         self.resize(1180, 760)
         root = QtWidgets.QVBoxLayout(self)
         top = QtWidgets.QHBoxLayout()
@@ -348,12 +349,14 @@ class TextureEditor(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(self, "Export failed", "Не удалось сохранить PNG-файл.")
 
     def save_project(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить проект текстуры", "texture.tstudio", "Texture Studio (*.tstudio)")
+        default = str(self.project_path / "TextureProjects" / "texture.tstudio") if self.project_path else "texture.tstudio"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить проект текстуры", default, "Проект текстуры (*.tstudio)")
         if not path:
             return
         if not path.lower().endswith(".tstudio"):
             path += ".tstudio"
         try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
             with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
                 metadata = {"format_version": 1, "active_layer": self.canvas.active_layer, "layers": []}
                 for index, layer in enumerate(self.canvas.layers):
@@ -370,7 +373,8 @@ class TextureEditor(QtWidgets.QDialog):
             QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
 
     def open_project(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть проект текстуры", "", "Texture Studio (*.tstudio)")
+        start = str(self.project_path / "TextureProjects") if self.project_path and (self.project_path / "TextureProjects").is_dir() else ""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть проект текстуры", start, "Проект текстуры (*.tstudio)")
         if not path:
             return
         try:

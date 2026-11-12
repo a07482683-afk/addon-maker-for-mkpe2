@@ -89,23 +89,27 @@ class TextureCanvas(QtWidgets.QWidget):
 
     def mousePressEvent(self, event):
         p = self.point_for(event.pos())
-        if self.tool == "Eyedropper":
+        if self.tool == "Eyedropper" and event.button() == QtCore.Qt.LeftButton:
             self.color = self.composite().pixelColor(p)
             return
         self.snapshot()
         self.last = p
-        self.apply(p)
+        self.mouse_erase = event.button() == QtCore.Qt.RightButton
+        if self.mouse_erase:
+            self.draw_line(p, p, erase=True)
+        else:
+            self.apply(p)
 
     def mouseMoveEvent(self, event):
-        if self.last is not None and event.buttons() & QtCore.Qt.LeftButton:
+        if self.last is not None and event.buttons() & (QtCore.Qt.LeftButton | QtCore.Qt.RightButton):
             p = self.point_for(event.pos())
-            if self.tool in ("Pencil", "Eraser"):
-                self.draw_line(self.last, p)
+            if self.tool in ("Pencil", "Eraser") or self.mouse_erase:
+                self.draw_line(self.last, p, erase=self.mouse_erase)
             self.last = p
 
     def mouseReleaseEvent(self, event):
         self.last = None
-
+        self.mouse_erase = False
     def apply(self, p):
         if self.tool == "Fill":
             self.flood_fill(p)
@@ -119,9 +123,10 @@ class TextureCanvas(QtWidgets.QWidget):
             painter.end()
         self.update()
 
-    def draw_line(self, a, b):
+    def draw_line(self, a, b, erase=None):
         painter = QtGui.QPainter(self.image)
-        if self.tool == "Eraser":
+        should_erase = self.tool == "Eraser" if erase is None else erase
+        if should_erase:
             painter.setCompositionMode(QtGui.QPainter.CompositionMode_Clear)
         else:
             painter.setPen(QtGui.QPen(self.color, 1))

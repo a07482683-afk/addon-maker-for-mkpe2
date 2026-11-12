@@ -61,15 +61,15 @@ def load_ascii_fbx(path):
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     if "Kaydara FBX Binary" in text[:32]:
         raise ValueError("Binary FBX is not supported. Export as ASCII FBX or OBJ.")
-    vm = re.search(r"Vertices\\s*:\\s*\\*\\s*\\d+\\s*\\{\\s*a\\s*:\\s*([^}]*)\\}", text, re.S)
-    pm = re.search(r"PolygonVertexIndex\\s*:\\s*\\*\\s*\\d+\\s*\\{\\s*a\\s*:\\s*([^}]*)\\}", text, re.S)
+    vm = re.search(r"Vertices\s*:\s*\*\s*\d+\s*\{\s*a\s*:\s*([^}]*)\}", text, re.S)
+    pm = re.search(r"PolygonVertexIndex\s*:\s*\*\s*\d+\s*\{\s*a\s*:\s*([^}]*)\}", text, re.S)
     if not vm or not pm:
         raise ValueError("Could not read FBX mesh arrays. Export as ASCII FBX or OBJ.")
-    numbers = [float(x) for x in re.findall(r"[-+]?(?:\\d+\\.?\\d*|\\.\\d+)(?:[eE][-+]?\\d+)?", vm.group(1))]
+    numbers = [float(x) for x in re.findall(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?", vm.group(1))]
     if len(numbers) < 9 or len(numbers) % 3:
         raise ValueError("FBX vertex array is invalid.")
     vertices = [tuple(numbers[i:i + 3]) for i in range(0, len(numbers), 3)]
-    indices = [int(x) for x in re.findall(r"-?\\d+", pm.group(1))]
+    indices = [int(x) for x in re.findall(r"-?\d+", pm.group(1))]
     faces, face = [], []
     for value in indices:
         index = -value - 1 if value < 0 else value
@@ -206,7 +206,7 @@ class MeshView(QtWidgets.QWidget):
         painter.fillRect(self.rect(), QtGui.QColor("#11151d"))
         if not self.mesh:
             painter.setPen(QtGui.QColor("#9aa5b8"))
-            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Import OBJ or ASCII FBX\\nDrag to rotate • Wheel to zoom")
+            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Import OBJ or ASCII FBX\nDrag to rotate • Wheel to zoom")
             return
         verts = self.mesh.vertices
         center = [sum(v[i] for v in verts) / len(verts) for i in range(3)]
@@ -315,8 +315,8 @@ class ModelWorkspace(QtWidgets.QDialog):
         try:
             data = bedrock_geometry(self.mesh, self.geometry_id.text().strip() or "geometry.custom_model",
                                     self.texture_width.value(), self.texture_height.value())
-            Path(filename).write_text(json.dumps(data, indent=2) + "\\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Bedrock geometry exported to:\\n" + filename)
+            Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            QtWidgets.QMessageBox.information(self, "Saved", "Bedrock geometry exported to:\n" + filename)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
 
@@ -327,7 +327,7 @@ class ModelWorkspace(QtWidgets.QDialog):
         try:
             data = bedrock_animation(self.animation_id.text().strip() or "animation.custom_model.rotate",
                                      self.duration.value(), self.axis.currentText(), self.angle.value())
-            Path(filename).write_text(json.dumps(data, indent=2) + "\\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Starter animation JSON exported to:\\n" + filename)
+            Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            QtWidgets.QMessageBox.information(self, "Saved", "Starter animation JSON exported to:\n" + filename)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))

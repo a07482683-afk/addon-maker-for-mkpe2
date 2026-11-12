@@ -7,16 +7,17 @@ from PySide2 import QtCore, QtGui, QtWidgets
 
 
 class Mesh:
-    def __init__(self, vertices, faces, source, groups=None, texcoords=None):
+    def __init__(self, vertices, faces, source, groups=None, texcoords=None, face_uvs=None):
         self.vertices = vertices
         self.faces = faces
         self.source = source
         self.groups = groups or {"root": list(range(len(faces)))}
         self.texcoords = texcoords or []
+        self.face_uvs = face_uvs or [None] * len(faces)
 
 
 def load_obj(path):
-    vertices, texcoords, faces = [], [], []
+    vertices, texcoords, faces, face_uvs = [], [], [], []
     groups = {}
     active = "root"
     with open(str(path), "r", encoding="utf-8", errors="replace") as stream:
@@ -51,11 +52,12 @@ def load_obj(path):
                         tri = (corners[0], corners[i], corners[i + 1])
                         face_index = len(faces)
                         faces.append(tuple(c[0] for c in tri))
+                        face_uvs.append(tuple(texcoords[c[1]] if c[1] is not None and 0 <= c[1] < len(texcoords) else None for c in tri))
                         groups.setdefault(active, []).append(face_index)
     groups = {name: ids for name, ids in groups.items() if ids}
     if not vertices or not faces:
         raise ValueError("OBJ file contains no readable polygon mesh.")
-    return Mesh(vertices, faces, str(path), groups, texcoords)
+    return Mesh(vertices, faces, str(path), groups, texcoords, face_uvs)
 
 
 def load_ascii_fbx(path):
@@ -84,7 +86,7 @@ def load_ascii_fbx(path):
             face = []
     if not faces:
         raise ValueError("FBX file contains no readable polygons.")
-    return Mesh(vertices, faces, str(path))
+    return Mesh(vertices, faces, str(path), face_uvs=[None] * len(faces))
 
 
 def import_mesh(path):
@@ -104,48 +106,45 @@ def _safe_bone_name(name, index):
 
 
 def bedrock_geometry(mesh, identifier, texture_width=64, texture_height=64):
-    all_vertices = mesh.vertices
-    mins = [min(v[i] for v in all_vertices) for i in range(3)]
-    maxs = [max(v[i] for v in all_vertices) for i in range(3)]
-    spans = [maxs[i] - mins[i] for i in range(3)]
-    scale = 16.0 / (max(spans) or 1.0)
+    mins = [min(v[i] for v in mesh.vertices) for i in range(3)]
+    maxs = [max(v[i] for v in mesh.vertices) for i in range(3)]
+    scale = 16.0 / (max(maxs[i]-mins[i] for i in range(3)) or 1.0)
     safe_id = identifier if identifier.startswith("geometry.") else "geometry." + identifier
     bones = []
-    group_items = list(mesh.groups.items()) if mesh.groups else [("root", list(range(len(mesh.faces))))]
-    for index, (group_name, face_ids) in enumerate(group_items):
-        used = sorted({vertex_id for face_id in face_ids for vertex_id in mesh.faces[face_id]})
-        if not used:
-            continue
-        part_min = [min(mesh.vertices[v][i] for v in used) for i in range(3)]
-        part_max = [max(mesh.vertices[v][i] for v in used) for i in range(3)]
-        origin = [round((part_min[i] - mins[i]) * scale - 8.0, 4) for i in range(3)]
-        size = [max(0.01, round((part_max[i] - part_min[i]) * scale, 4)) for i in range(3)]
-        bones.append({
-            "name": _safe_bone_name(group_name, index),
-            "pivot": [round(origin[0] + size[0] / 2, 4), round(origin[1], 4), round(origin[2] + size[2] / 2, 4)],
-            "cubes": [{
-                "origin": origin,
-                "size": size,
-                "uv": [0, 0]
-            }]
-        })
+    for index, (group_name, face_ids) in enumerate((list(mesh.groups.items()) or [("root", list(range(len(mesh.faces))))])):
+        vertex_map, positions, uvs, normals, polygons = {}, [], [], [], []
+        for face_id in face_ids:
+            face = mesh.faces[face_id]
+            uv_corners = mesh.face_uvs[face_id] if face_id < len(mesh.face_uvs) else None
+            a, b, c = [mesh.vertices[v] for v in face]
+            ux, uy, uz = b[0]-a[0], b[1]-a[1], b[2]-a[2]
+            vx, vy, vz = c[0]-a[0], c[1]-a[1], c[2]-a[2]
+            nx, ny, nz = uy*vz-uz*vy, uz*vx-ux*vz, ux*vy-uy*vx
+            length = math.sqrt(nx*nx+ny*ny+nz*nz) or 1.0
+            normal = (nx/length, ny/length, nz/length)
+            polygon = []
+            for corner, vertex_id in enumerate(face):
+                uv = uv_corners[corner] if uv_corners and uv_corners[corner] is not None else (0.0, 0.0)
+                key = (vertex_id, round(uv[0], 7), round(uv[1], 7))
+                if key not in vertex_map:
+                    v = mesh.vertices[vertex_id]
+                    vertex_map[key] = len(positions)
+                    positions.append([round((v[i]-mins[i])*scale-8.0, 5) for i in range(3)])
+                    uvs.append([round(float(uv[0]), 6), round(1.0-float(uv[1]), 6)])
+                    normals.append([round(x, 6) for x in normal])
+                polygon.append(vertex_map[key])
+            polygons.append(polygon + [-1])
+        if positions:
+            bones.append({"name": _safe_bone_name(group_name, index), "pivot": [0, 0, 0],
+                          "poly_mesh": {"normalized_uvs": True, "positions": positions,
+                                        "normals": normals, "uvs": uvs, "polys": polygons}})
     if not bones:
-        raise ValueError("No usable mesh groups were found.")
-    return {
-        "format_version": "1.12.0",
-        "minecraft:geometry": [{
-            "description": {
-                "identifier": safe_id,
-                "texture_width": int(texture_width),
-                "texture_height": int(texture_height),
-                "visible_bounds_width": 2.0,
-                "visible_bounds_height": 2.0,
-                "visible_bounds_offset": [0, 0.5, 0]
-            },
-            "bones": bones
-        }]
-    }
-
+        raise ValueError("Не удалось создать геометрию: в модели нет полигонов.")
+    return {"format_version": "1.12.0", "minecraft:geometry": [{
+        "description": {"identifier": safe_id, "texture_width": int(texture_width),
+                        "texture_height": int(texture_height), "visible_bounds_width": 2.0,
+                        "visible_bounds_height": 2.0, "visible_bounds_offset": [0, 0.5, 0]},
+        "bones": bones}]}
 
 def bedrock_animation(identifier, duration, axis, angle):
     safe_id = identifier if identifier.startswith("animation.") else "animation." + identifier
@@ -175,6 +174,7 @@ class MeshView(QtWidgets.QWidget):
         super().__init__(parent)
         self.setMinimumSize(420, 360)
         self.mesh = None
+        self.wireframe = True
         self.yaw, self.pitch, self.zoom = -35.0, 20.0, 1.0
         self.last_pos = None
         self.setStyleSheet("background:#11151d;border:1px solid #343b4b;border-radius:8px;")
@@ -215,7 +215,7 @@ class MeshView(QtWidgets.QWidget):
         painter.fillRect(self.rect(), QtGui.QColor("#11151d"))
         if not self.mesh:
             painter.setPen(QtGui.QColor("#9aa5b8"))
-            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Import OBJ or ASCII FBX\nDrag to rotate • Wheel to zoom")
+            painter.drawText(self.rect(), QtCore.Qt.AlignCenter, "Импортируйте OBJ или ASCII FBX\nЛКМ — вращение • Колесо — масштаб")
             return
         verts = self.mesh.vertices
         center = [sum(v[i] for v in verts) / len(verts) for i in range(3)]
@@ -238,7 +238,8 @@ class MeshView(QtWidgets.QWidget):
             poly = QtGui.QPolygonF([QtCore.QPointF(p[0], p[1]) for p in pts])
             shade = max(65, min(190, int(125 + depth * 2)))
             painter.setBrush(QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24)))
-            painter.setPen(QtGui.QPen(QtGui.QColor("#202a3a"), 1))
+            edge = QtGui.QColor("#202a3a") if self.wireframe else QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24))
+            painter.setPen(QtGui.QPen(edge, 1 if self.wireframe else 0))
             painter.drawPolygon(poly)
         painter.setPen(QtGui.QColor("#aab6c8"))
         painter.drawText(12, 22, "Faces: %d   Vertices: %d   Parts: %d" % (len(self.mesh.faces), len(verts), len(self.mesh.groups)))
@@ -268,6 +269,9 @@ class ModelWorkspace(QtWidgets.QDialog):
         root.addLayout(bar)
         self.view = MeshView()
         root.addWidget(self.view, 1)
+        wire_button = QtWidgets.QPushButton("Сетка полигонов: вкл / выкл")
+        wire_button.clicked.connect(self.toggle_wireframe)
+        root.addWidget(wire_button)
         preview_bar = QtWidgets.QHBoxLayout()
         preview_note = QtWidgets.QLabel("ЛКМ — вращать модель • Колесо — приближать и отдалять")
         preview_note.setStyleSheet("color:#aab6c8;")
@@ -315,10 +319,14 @@ class ModelWorkspace(QtWidgets.QDialog):
         save_animation.clicked.connect(self.save_animation)
         animation_form.addRow(save_animation)
         root.addWidget(animation_box)
-        note = QtWidgets.QLabel("OBJ groups/objects become separate Bedrock bones. Each part is currently represented by a fitted cuboid; OBJ UV coordinates are read but not yet transferred to individual cube faces. ASCII FBX is supported; binary FBX is not.")
+        note = QtWidgets.QLabel("OBJ-группы становятся отдельными костями, а треугольники и UV-координаты переносятся в poly_mesh. FBX пока импортируется без UV; бинарный FBX не поддерживается.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#e6c27a;")
         root.addWidget(note)
+
+    def toggle_wireframe(self):
+        self.view.wireframe = not self.view.wireframe
+        self.view.update()
 
     def save_preview(self):
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить снимок 3D-модели", "model-preview.png", "PNG (*.png)")

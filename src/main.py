@@ -12,7 +12,8 @@ APP_VERSION = "0.4.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "
+", encoding="utf-8")
 
 def manifest(name, description, pack_type):
     return {
@@ -40,8 +41,12 @@ def create_project(location, name, description):
     write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP"))
     write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
     (project / "README.txt").write_text(
-        safe + "\nBehavior Pack: BP/\nResource Pack: RP/\nCreated with " +
-        APP_NAME + " " + APP_VERSION + "\n", encoding="utf-8")
+        safe + "
+Behavior Pack: BP/
+Resource Pack: RP/
+Created with " +
+        APP_NAME + " " + APP_VERSION + "
+", encoding="utf-8")
     return project
 
 class ProjectDialog(QtWidgets.QDialog):
@@ -119,7 +124,8 @@ class MainWindow(QtWidgets.QMainWindow):
             button.clicked.connect(lambda checked=False, n=label: self.show_placeholder(n))
             side.addWidget(button)
         side.addStretch(1)
-        version = QtWidgets.QLabel("MCPE / Bedrock Edition\nVersion " + APP_VERSION)
+        version = QtWidgets.QLabel("MCPE / Bedrock Edition
+Version " + APP_VERSION)
         version.setObjectName("Muted")
         side.addWidget(version)
 
@@ -231,7 +237,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.project_label.setText(str(project))
             self.statusBar().showMessage("Project created successfully")
             QtWidgets.QMessageBox.information(self, "Project created",
-                "Your project is ready!\n\n" + str(project) + "\n\nFolders created: BP and RP.")
+                "Your project is ready!
+
+" + str(project) + "
+
+Folders created: BP and RP.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Could not create project", str(exc))
 
@@ -285,12 +295,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     for file_path in pack.rglob("*"):
                         if file_path.is_file():
                             archive.write(str(file_path), str(Path(pack.name) / file_path.relative_to(pack)))
-            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:\n" + target + "\n\nIt contains both BP and RP folders. Test it in your Bedrock version.")
+            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:
+" + target + "
+
+It contains both BP and RP folders. Test it in your Bedrock version.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
 
     def show_placeholder(self, name):
-        if name == "Resource Pack Textures":\n            TextureRegistryEditor(self).exec_()\n            return\n        if name == "Dashboard":
+        if name == "Resource Pack Textures":
+            TextureRegistryEditor(self).exec_()
+            return
+        if name == "Dashboard":
             self.statusBar().showMessage("Dashboard")
             return
         QtWidgets.QMessageBox.information(self, name,

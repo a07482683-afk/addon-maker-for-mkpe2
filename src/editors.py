@@ -540,7 +540,7 @@ class EventSheetEditor(QtWidgets.QWidget):
             path += ".json"
         try:
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-            Path(path).write_text(json.dumps({"format_version": 1, "events": self.event_data()}, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+            Path(path).write_text(json.dumps({"format_version": 1, "events": self.event_data()}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             QtWidgets.QMessageBox.information(self, "Сохранено", "Правила событий сохранены.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
@@ -585,7 +585,7 @@ class EventSheetEditor(QtWidgets.QWidget):
                 lines.append("  // Добавьте здесь свой код JavaScript: " + value.replace("\\n", " "))
             lines.append("});")
             lines.append("")
-        return "\\n".join(lines)
+        return "\n".join(lines)
 
     def generate_javascript(self):
         default = str(self.project_path / "BP" / "scripts" / "main.js") if self.project_path else "main.js"

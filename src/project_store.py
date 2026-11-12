@@ -4,6 +4,8 @@ PROJECT_FILE = ".addonmaker.json"
 def save_project_settings(project, settings=None):
     project = Path(project)
     data = {"format_version": 1, "name": project.name, "last_opened_tool": ""}
+    existing = load_project_settings(project)
+    data.update(existing)
     if settings: data.update(settings)
     target = project / PROJECT_FILE
     target.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")

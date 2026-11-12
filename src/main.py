@@ -40,10 +40,7 @@ def create_project(location, name, description):
     write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP"))
     write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
     (project / "README.txt").write_text(
-        safe + "
-Behavior Pack: BP/
-Resource Pack: RP/
-Created with " +
+        safe + "\nBehavior Pack: BP/\nResource Pack: RP/\nCreated with " +
         APP_NAME + " " + APP_VERSION + "
 ", encoding="utf-8")
     return project
@@ -123,8 +120,7 @@ class MainWindow(QtWidgets.QMainWindow):
             button.clicked.connect(lambda checked=False, n=label: self.open_editor(n))
             side.addWidget(button)
         side.addStretch(1)
-        version = QtWidgets.QLabel("MCPE / Bedrock Edition
-Version " + APP_VERSION)
+        version = QtWidgets.QLabel("MCPE / Bedrock Edition\nVersion " + APP_VERSION)
         version.setObjectName("Muted")
         side.addWidget(version)
 
@@ -236,11 +232,7 @@ Version " + APP_VERSION)
             self.project_label.setText(str(project))
             self.statusBar().showMessage("Project created successfully")
             QtWidgets.QMessageBox.information(self, "Project created",
-                "Your project is ready!
-
-" + str(project) + "
-
-Folders created: BP and RP.")
+                "Your project is ready!\n\n" + str(project) + "\n\nFolders created: BP and RP.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Could not create project", str(exc))
 

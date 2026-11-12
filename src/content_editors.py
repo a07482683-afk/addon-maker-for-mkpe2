@@ -175,6 +175,7 @@ class ItemEditor(DefinitionEditor):
         self.category = QtWidgets.QComboBox()
         self.category.addItems(["items", "equipment", "nature"])
         self.icon = QtWidgets.QLineEdit("my_item")
+        self.icon.setToolTip("Латинское имя текстуры без .png; оно должно совпадать с записью в RP/textures/item_texture.json.")
         self.foil = QtWidgets.QCheckBox("Свечение предмета")
         form.addRow("Категория в творческом режиме", self.category)
         form.addRow("Имя текстуры", self.icon)
@@ -188,33 +189,45 @@ class ItemEditor(DefinitionEditor):
         form.addRow("", self.icon_status)
 
     def open_icon_painter(self):
+        if not self.rp_path or not self.rp_path.is_dir():
+            QtWidgets.QMessageBox.warning(
+                self, "Нет Resource Pack",
+                "Сначала открой проект с папкой RP. Иконка должна попасть в ресурсы аддона.")
+            return
         dialog = PixelIconDialog(self)
         if dialog.exec_() != QtWidgets.QDialog.Accepted:
             return
-        if not self.rp_path or not self.rp_path.is_dir():
-            QtWidgets.QMessageBox.warning(self, "Нет Resource Pack", "Сначала создай или открой проект с папкой RP.")
-            return
-        key = self.icon.text().strip() or self.identifier.text().split(":")[-1]
-        key = re.sub(r"[^a-zA-Z0-9_./-]", "_", key)
-        target = self.rp_path / "textures" / "items" / (key.replace("/", "_") + ".png")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if not dialog.canvas.image.save(str(target), "PNG"):
-            QtWidgets.QMessageBox.critical(self, "Ошибка", "Не удалось сохранить PNG.")
-            return
+        raw_key = self.icon.text().strip() or self.identifier.text().split(":")[-1]
+        key = re.sub(r"[^a-zA-Z0-9_]", "_", raw_key.replace("/", "_").replace(chr(92), "_"))
+        if not key:
+            key = "custom_item"
+        target = self.rp_path / "textures" / "items" / (key + ".png")
         atlas_path = self.rp_path / "textures" / "item_texture.json"
         atlas = {"resource_pack_name": "addon", "texture_name": "atlas.items", "texture_data": {}}
         if atlas_path.is_file():
             try:
                 atlas = json.loads(atlas_path.read_text(encoding="utf-8-sig"))
+                if not isinstance(atlas, dict) or not isinstance(atlas.get("texture_data"), dict):
+                    raise ValueError("В atlas должен быть объект texture_data.")
             except Exception as exc:
-                QtWidgets.QMessageBox.critical(self, "Ошибка атласа", "Не удалось прочитать item_texture.json: " + str(exc))
+                QtWidgets.QMessageBox.critical(
+                    self, "Ошибка атласа",
+                    "Не удалось прочитать textures/item_texture.json. Старый файл не изменён.\\n" + str(exc))
                 return
-        atlas.setdefault("texture_data", {})[key] = {"textures": "textures/items/" + target.stem}
-        atlas_path.parent.mkdir(parents=True, exist_ok=True)
-        atlas_path.write_text(json.dumps(atlas, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not dialog.canvas.image.save(str(target), "PNG"):
+                raise IOError("Qt не смог сохранить PNG.")
+            atlas.setdefault("resource_pack_name", "addon")
+            atlas.setdefault("texture_name", "atlas.items")
+            atlas["texture_data"][key] = {"textures": "textures/items/" + key}
+            atlas_path.write_text(
+                json.dumps(atlas, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Ошибка сохранения иконки", str(exc))
+            return
         self.icon.setText(key)
-        self.icon_status.setText("Иконка сохранена: " + str(target))
-
+        self.icon_status.setText("Иконка сохранена в RP: " + key + ".png")
 
     def connect_fields(self):
         for widget, signal in (

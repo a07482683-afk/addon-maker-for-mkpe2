@@ -17,6 +17,7 @@ on:
       - phase3-item-block-editors
       - phase4-armor-texture-registry
       - phase6-geometry-uv-bones
+      - phase7-easy-mode-export-fixes
     paths:
       - "src/**"
       - "requirements.txt"

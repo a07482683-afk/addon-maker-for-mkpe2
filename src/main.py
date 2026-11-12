@@ -12,8 +12,7 @@ APP_VERSION = "0.4.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "
-", encoding="utf-8")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
 def manifest(name, description, pack_type):
     return {
@@ -295,10 +294,7 @@ Folders created: BP and RP.")
                     for file_path in pack.rglob("*"):
                         if file_path.is_file():
                             archive.write(str(file_path), str(Path(pack.name) / file_path.relative_to(pack)))
-            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:
-" + target + "
-
-It contains both BP and RP folders. Test it in your Bedrock version.")
+            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:\n" + target + "\n\nIt contains both BP and RP folders. Test it in your Bedrock version.")
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
 

@@ -237,7 +237,7 @@ class MainWindow(QtWidgets.QMainWindow):
         elif key == "texture":
             TextureEditor(self, str(self.project_path)).exec_()
         elif key == "model":
-            ModelWorkspace(self).exec_()
+            ModelWorkspace(self, str(self.project_path) if self.project_path else None).exec_()
         elif key == "logic":
             LogicWorkspace(self, str(self.project_path)).exec_()
         elif key == "registry":

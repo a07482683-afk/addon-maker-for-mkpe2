@@ -172,7 +172,7 @@ class TextureCanvas(QtWidgets.QWidget):
 class TextureEditor(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Texture Studio")
+        self.setWindowTitle("Редактор текстур — рисование иконок и текстур")
         self.resize(1180, 760)
         root = QtWidgets.QVBoxLayout(self)
         top = QtWidgets.QHBoxLayout()
@@ -235,7 +235,7 @@ class TextureEditor(QtWidgets.QDialog):
         layer_panel.addWidget(self.opacity_slider)
         body.addLayout(layer_panel)
         root.addLayout(body, 1)
-        self.status = QtWidgets.QLabel("Pencil • 64 × 64 • Transparent background")
+        self.status = QtWidgets.QLabel("Карандаш • 64 × 64 • Прозрачный фон")
         root.addWidget(self.status)
         self.refresh_layers()
 
@@ -294,7 +294,7 @@ class TextureEditor(QtWidgets.QDialog):
         if self.canvas.remove_layer():
             self.refresh_layers()
         else:
-            QtWidgets.QMessageBox.information(self, "Layers", "A texture must keep at least one layer.")
+            QtWidgets.QMessageBox.information(self, "Слои", "У текстуры должен остаться хотя бы один слой.")
 
     def move_layer(self, direction):
         self.canvas.move_layer(direction)
@@ -305,13 +305,14 @@ class TextureEditor(QtWidgets.QDialog):
         self.refresh_layers()
 
     def set_tool(self, tool):
-        self.canvas.tool = tool
+        internal = {"Карандаш": "Pencil", "Ластик": "Eraser", "Заливка": "Fill", "Пипетка": "Eyedropper"}
+        self.canvas.tool = internal.get(tool, "Pencil")
         self.status.setText(tool + " • %d × %d" % (self.canvas.image.width(), self.canvas.image.height()))
 
     def change_size(self, index):
         size = (16,32,64,128,256)[index]
         self.canvas.set_size(size, size)
-        self.status.setText("Canvas resized to %d × %d" % (size,size))
+        self.status.setText("Размер холста: %d × %d" % (size,size))
 
     def toggle_grid(self, enabled):
         self.canvas.grid = enabled
@@ -322,7 +323,7 @@ class TextureEditor(QtWidgets.QDialog):
         if color.isValid():
             self.canvas.color = color
             self.color_preview.setStyleSheet("background:%s;border:1px solid #555;border-radius:5px;" % color.name())
-            self.status.setText("Color: " + color.name())
+            self.status.setText("Цвет: " + color.name())
 
     def open_image(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть текстуру", "", "Images (*.png *.jpg *.bmp)")
@@ -334,7 +335,7 @@ class TextureEditor(QtWidgets.QDialog):
                 self.canvas.image = image.convertToFormat(QtGui.QImage.Format_ARGB32)
                 self.canvas.update()
                 self.refresh_layers()
-                self.status.setText("Imported as new layer: " + Path(path).name)
+                self.status.setText("Добавлен новый слой: " + Path(path).name)
 
     def save_image(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспорт текстуры", "texture.png", "PNG image (*.png)")
@@ -342,9 +343,9 @@ class TextureEditor(QtWidgets.QDialog):
             if not path.lower().endswith(".png"):
                 path += ".png"
             if self.canvas.composite().save(path, "PNG"):
-                self.status.setText("Exported merged texture: " + path)
+                self.status.setText("Текстура PNG сохранена: " + path)
             else:
-                QtWidgets.QMessageBox.warning(self, "Export failed", "Could not save this PNG file.")
+                QtWidgets.QMessageBox.warning(self, "Export failed", "Не удалось сохранить PNG-файл.")
 
     def save_project(self):
         path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить проект текстуры", "texture.tstudio", "Texture Studio (*.tstudio)")
@@ -364,9 +365,9 @@ class TextureEditor(QtWidgets.QDialog):
                                                 "opacity": layer["opacity"],
                                                 "file": "layers/layer_%03d.png" % index})
                 archive.writestr("project.json", json.dumps(metadata, indent=2, ensure_ascii=False))
-            self.status.setText("Saved layered project: " + path)
+            self.status.setText("Проект текстуры сохранён: " + path)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка сохранения", str(exc))
 
     def open_project(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть проект текстуры", "", "Texture Studio (*.tstudio)")
@@ -390,9 +391,9 @@ class TextureEditor(QtWidgets.QDialog):
                 self.canvas.undo_stack = []
                 self.canvas.update()
                 self.refresh_layers()
-                self.status.setText("Opened layered project: " + Path(path).name)
+                self.status.setText("Открыт проект текстуры: " + Path(path).name)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Open failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка открытия", str(exc))
 
 
 class EventSheetEditor(QtWidgets.QWidget):
@@ -652,4 +653,4 @@ class LogicWorkspace(QtWidgets.QDialog):
                 Path(path).write_text(widget.toPlainText(),encoding="utf-8")
                 QtWidgets.QMessageBox.information(self,"Saved","Code file saved.")
             except Exception as exc:
-                QtWidgets.QMessageBox.critical(self,"Save failed",str(exc))
+                QtWidgets.QMessageBox.critical(self,"Ошибка сохранения",str(exc))

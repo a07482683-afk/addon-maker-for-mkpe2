@@ -174,6 +174,7 @@ class MeshView(QtWidgets.QWidget):
         super().__init__(parent)
         self.setMinimumSize(420, 360)
         self.mesh = None
+        self.wireframe = True
         self.yaw, self.pitch, self.zoom = -35.0, 20.0, 1.0
         self.last_pos = None
         self.setStyleSheet("background:#11151d;border:1px solid #343b4b;border-radius:8px;")
@@ -237,7 +238,8 @@ class MeshView(QtWidgets.QWidget):
             poly = QtGui.QPolygonF([QtCore.QPointF(p[0], p[1]) for p in pts])
             shade = max(65, min(190, int(125 + depth * 2)))
             painter.setBrush(QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24)))
-            painter.setPen(QtGui.QPen(QtGui.QColor("#202a3a"), 1))
+            edge = QtGui.QColor("#202a3a") if self.wireframe else QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24))
+            painter.setPen(QtGui.QPen(edge, 1 if self.wireframe else 0))
             painter.drawPolygon(poly)
         painter.setPen(QtGui.QColor("#aab6c8"))
         painter.drawText(12, 22, "Faces: %d   Vertices: %d   Parts: %d" % (len(self.mesh.faces), len(verts), len(self.mesh.groups)))
@@ -267,6 +269,9 @@ class ModelWorkspace(QtWidgets.QDialog):
         root.addLayout(bar)
         self.view = MeshView()
         root.addWidget(self.view, 1)
+        wire_button = QtWidgets.QPushButton("Сетка полигонов: вкл / выкл")
+        wire_button.clicked.connect(self.toggle_wireframe)
+        root.addWidget(wire_button)
         preview_bar = QtWidgets.QHBoxLayout()
         preview_note = QtWidgets.QLabel("ЛКМ — вращать модель • Колесо — приближать и отдалять")
         preview_note.setStyleSheet("color:#aab6c8;")
@@ -318,6 +323,10 @@ class ModelWorkspace(QtWidgets.QDialog):
         note.setWordWrap(True)
         note.setStyleSheet("color:#e6c27a;")
         root.addWidget(note)
+
+    def toggle_wireframe(self):
+        self.view.wireframe = not self.view.wireframe
+        self.view.update()
 
     def save_preview(self):
         filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить снимок 3D-модели", "model-preview.png", "PNG (*.png)")

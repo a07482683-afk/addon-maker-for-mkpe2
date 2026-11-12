@@ -188,8 +188,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def set_project(self, path):
         self.project_path = validate_project_folder(path)
+        self.project_settings = load_project_settings(self.project_path)
         self.settings.setValue("recent_project", str(self.project_path))
-        save_project_settings(self.project_path)
+        save_project_settings(self.project_path, self.project_settings)
         self.project_label.setText("ТЕКУЩИЙ ПРОЕКТ: " + str(self.project_path))
         self.statusBar().showMessage("Проект открыт. Выбирайте нужный редактор.")
 

@@ -19,6 +19,7 @@ on:
       - phase6-geometry-uv-bones
       - phase7-easy-mode-export-fixes
       - phase8-beginner-studio-examples
+      - phase9-item-icon-3d-preview-fixes
     paths:
       - "src/**"
       - "requirements.txt"

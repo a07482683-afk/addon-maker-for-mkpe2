@@ -245,6 +245,12 @@ class MainWindow(QtWidgets.QMainWindow):
         if name == "Blocks":
             BlockEditor(self).exec_()
             return
+        if name == "Armor & Wearables":
+            ArmorEditor(self).exec_()
+            return
+        if name == "Resource Pack Textures":
+            TextureRegistryEditor(self).exec_()
+            return
         self.show_placeholder(name)
 
     def show_placeholder(self, name):

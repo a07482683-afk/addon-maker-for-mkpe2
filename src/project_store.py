@@ -17,7 +17,8 @@ def load_project_settings(project):
         data = json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(data, dict): raise ValueError("Ожидался JSON-объект.")
         return data
-    except Exception as exc: raise ValueError("Не удалось прочитать настройки проекта: %s" % exc)
+    except Exception:
+        return {"format_version": 1, "name": Path(project).name, "last_opened_tool": ""}
 def validate_project_folder(project):
     project = Path(project)
     for pack in ("BP", "RP"):

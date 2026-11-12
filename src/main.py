@@ -1,303 +1,246 @@
-import json
 import sys
 import uuid
 from pathlib import Path
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide2 import QtWidgets
 from editors import TextureEditor, LogicWorkspace
 from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistryEditor
 from model_editor import ModelWorkspace
+from mcaddon_export import export_mcaddon
 
-APP_NAME = "Addon Maker for MCPE"
-APP_VERSION = "0.5.0"
+APP_NAME = "Addon Maker для MCPE"
+APP_VERSION = "0.6.0"
 
 def write_json(path, data):
+    import json
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")
 
 def manifest(name, description, pack_type):
     return {
         "format_version": 2,
-        "header": {
-            "name": name, "description": description, "uuid": str(uuid.uuid4()),
-            "version": [1, 0, 0], "min_engine_version": [1, 20, 0]
-        },
-        "modules": [{
-            "type": "data" if pack_type == "BP" else "resources",
-            "uuid": str(uuid.uuid4()), "version": [1, 0, 0]
-        }]
+        "header": {"name": name, "description": description, "uuid": str(uuid.uuid4()),
+                   "version": [1, 0, 0], "min_engine_version": [1, 20, 0]},
+        "modules": [{"type": "data" if pack_type == "BP" else "resources",
+                     "uuid": str(uuid.uuid4()), "version": [1, 0, 0]}]
     }
 
 def create_project(location, name, description):
     safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
     if not safe:
-        raise ValueError("Project name must contain letters or numbers.")
-    project = Path(location) / safe
+        raise ValueError("Введите название проекта.")
+    root = Path(location).expanduser()
+    root.mkdir(parents=True, exist_ok=True)
+    project = root / safe
     if project.exists():
-        raise FileExistsError("That project folder already exists.")
+        raise FileExistsError("Такая папка уже существует. Выберите другое имя или место.")
     bp, rp = project / "BP", project / "RP"
     bp.mkdir(parents=True)
     rp.mkdir(parents=True)
     write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP"))
     write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
-    (project / "README.txt").write_text(
-        safe + "\nBehavior Pack: BP/\nResource Pack: RP/\nCreated with " +
-        APP_NAME + " " + APP_VERSION + "\n", encoding="utf-8")
+    (project / "README.txt").write_text(safe + chr(10) + "BP — поведение и предметы." + chr(10) + "RP — текстуры и ресурсы." + chr(10), encoding="utf-8")
     return project
 
 class ProjectDialog(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Create a new add-on")
-        self.setMinimumWidth(460)
+        self.setWindowTitle("Создать проект")
+        self.setMinimumWidth(500)
         layout = QtWidgets.QVBoxLayout(self)
+        intro = QtWidgets.QLabel("Напишите название. Программа сама создаст нужные папки.")
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
         form = QtWidgets.QFormLayout()
-        self.name = QtWidgets.QLineEdit("My First Addon")
-        self.description = QtWidgets.QLineEdit("A custom Minecraft Bedrock add-on")
+        self.name = QtWidgets.QLineEdit("Мой первый аддон")
+        self.description = QtWidgets.QLineEdit("Аддон для Minecraft Bedrock")
         self.location = QtWidgets.QLineEdit(str(Path.home() / "Documents" / "MCPE Addons"))
-        browse = QtWidgets.QPushButton("Browse...")
+        browse = QtWidgets.QPushButton("Обзор…")
         browse.clicked.connect(self.browse)
         row = QtWidgets.QHBoxLayout()
         row.addWidget(self.location, 1)
         row.addWidget(browse)
-        form.addRow("Project name", self.name)
-        form.addRow("Description", self.description)
-        form.addRow("Save location", row)
+        form.addRow("Название:", self.name)
+        form.addRow("Описание:", self.description)
+        form.addRow("Сохранить в:", row)
         layout.addLayout(form)
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
-        buttons.button(QtWidgets.QDialogButtonBox.Ok).setText('Create')
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.button(QtWidgets.QDialogButtonBox.Ok).setText("Создать")
+        buttons.button(QtWidgets.QDialogButtonBox.Cancel).setText("Отмена")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
-
     def browse(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose project location")
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Выберите место")
         if folder:
             self.location.setText(folder)
 
 class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle(APP_NAME + " • " + APP_VERSION)
-        self.resize(1180, 760)
-        self.setMinimumSize(900, 600)
-        self.setStyleSheet("""
-        QWidget { background:#17191f; color:#e7eaf0; font-family:Segoe UI,Arial; font-size:10pt; }
-        QFrame#Sidebar { background:#111319; border-right:1px solid #292d37; }
-        QLabel#Brand { color:#8b9cff; font-size:17pt; font-weight:700; }
-        QLabel#Muted { color:#9299a8; }
-        QLabel#PageTitle { font-size:25pt; font-weight:700; }
-        QFrame#Panel,QFrame#Tile { background:#20232c; border:1px solid #303541; border-radius:12px; }
-        QPushButton { background:#303644; border:1px solid #41495a; border-radius:8px; padding:10px 14px; }
-        QPushButton:hover { background:#3a4354; border-color:#7185ff; }
-        QPushButton#Primary { background:#6578f5; border:0; color:white; font-weight:600; }
-        QPushButton#Nav { text-align:left; background:transparent; border:0; padding:11px; color:#b9c0ce; }
-        QPushButton#Nav:hover { background:#242936; color:white; }
-        QLineEdit { background:#14171e; border:1px solid #3b4250; border-radius:7px; padding:9px; }
-        QStatusBar { color:#aab1bf; background:#111319; }
-        """)
         self.project_path = None
+        self.setWindowTitle(APP_NAME + " • " + APP_VERSION)
+        self.resize(1040, 720)
+        self.setMinimumSize(850, 600)
+        self.setStyleSheet("""
+        QWidget { background:#17191f; color:#e7eaf0; font-family:Segoe UI,Arial; font-size:11pt; }
+        QFrame#Card { background:#222631; border:1px solid #343b4b; border-radius:12px; }
+        QLabel#Title { font-size:25pt; font-weight:700; }
+        QLabel#Muted { color:#aab2c2; }
+        QPushButton { background:#343d50; border:1px solid #4b5870; border-radius:8px; padding:12px; }
+        QPushButton:hover { background:#46536b; }
+        QPushButton#Primary { background:#667af5; border:0; color:white; font-weight:700; }
+        """)
         self.build_ui()
 
     def build_ui(self):
-        central = QtWidgets.QWidget()
-        root = QtWidgets.QHBoxLayout(central)
-        root.setContentsMargins(0, 0, 0, 0)
-        root.setSpacing(0)
-        sidebar = QtWidgets.QFrame()
-        sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(225)
-        side = QtWidgets.QVBoxLayout(sidebar)
-        side.setContentsMargins(18, 24, 18, 18)
-        brand = QtWidgets.QLabel("◆  ADDON MAKER")
-        brand.setObjectName("Brand")
-        side.addWidget(brand)
-        side.addSpacing(28)
-        for label in ["Dashboard", "My Projects", "Content Editors", "Texture Studio", "Resource Pack Textures", "Logic & Code", "3D Workspace", "Export"]:
-            button = QtWidgets.QPushButton(label)
-            button.setObjectName("Nav")
-            button.clicked.connect(lambda checked=False, n=label: self.open_editor(n))
-            side.addWidget(button)
-        side.addStretch(1)
-        version = QtWidgets.QLabel("MCPE / Bedrock Edition\nVersion " + APP_VERSION)
-        version.setObjectName("Muted")
-        side.addWidget(version)
-
-        content = QtWidgets.QWidget()
-        page = QtWidgets.QVBoxLayout(content)
-        page.setContentsMargins(32, 28, 32, 24)
-        page.setSpacing(18)
-        top = QtWidgets.QHBoxLayout()
-        headings = QtWidgets.QVBoxLayout()
-        title = QtWidgets.QLabel("Dashboard")
-        title.setObjectName("PageTitle")
-        subtitle = QtWidgets.QLabel("Create, organize and export Minecraft Bedrock content.")
+        root = QtWidgets.QWidget()
+        layout = QtWidgets.QVBoxLayout(root)
+        layout.setContentsMargins(26, 22, 26, 20)
+        layout.setSpacing(14)
+        title = QtWidgets.QLabel("Создаём аддон для Minecraft")
+        title.setObjectName("Title")
+        layout.addWidget(title)
+        subtitle = QtWidgets.QLabel("Просто выполняйте шаги по порядку. Программирование не требуется.")
         subtitle.setObjectName("Muted")
-        headings.addWidget(title)
-        headings.addWidget(subtitle)
-        top.addLayout(headings)
-        top.addStretch(1)
-        create = QtWidgets.QPushButton("+  New Project")
+        layout.addWidget(subtitle)
+
+        project_card = QtWidgets.QFrame()
+        project_card.setObjectName("Card")
+        pc = QtWidgets.QVBoxLayout(project_card)
+        self.project_label = QtWidgets.QLabel("ШАГ 1. Сначала создайте проект или откройте существующий.")
+        self.project_label.setWordWrap(True)
+        pc.addWidget(self.project_label)
+        row = QtWidgets.QHBoxLayout()
+        create = QtWidgets.QPushButton("＋ Создать проект")
         create.setObjectName("Primary")
         create.clicked.connect(self.new_project)
-        top.addWidget(create)
-        page.addLayout(top)
+        open_btn = QtWidgets.QPushButton("Открыть проект…")
+        open_btn.clicked.connect(self.open_project)
+        row.addWidget(create)
+        row.addWidget(open_btn)
+        row.addStretch(1)
+        pc.addLayout(row)
+        layout.addWidget(project_card)
 
-        welcome = QtWidgets.QFrame()
-        welcome.setObjectName("Panel")
-        wl = QtWidgets.QHBoxLayout(welcome)
-        wl.setContentsMargins(24, 20, 24, 20)
-        texts = QtWidgets.QVBoxLayout()
-        wt = QtWidgets.QLabel("Your next Bedrock creation starts here")
-        wt.setStyleSheet("font-size:17pt;font-weight:650;")
-        wd = QtWidgets.QLabel("Start with linked Behavior Pack and Resource Pack folders.")
-        wd.setObjectName("Muted")
-        texts.addWidget(wt)
-        texts.addWidget(wd)
-        wl.addLayout(texts, 1)
-        quick = QtWidgets.QPushButton("Create project")
-        quick.setObjectName("Primary")
-        quick.clicked.connect(self.new_project)
-        wl.addWidget(quick)
-        page.addWidget(welcome)
-
-        section = QtWidgets.QLabel("CONTENT WORKSPACE")
-        section.setObjectName("Muted")
-        section.setStyleSheet("font-weight:700;letter-spacing:1px;")
-        page.addWidget(section)
+        label = QtWidgets.QLabel("ШАГ 2. Что хотите добавить?")
+        label.setStyleSheet("font-size:15pt;font-weight:700;")
+        layout.addWidget(label)
         grid = QtWidgets.QGridLayout()
-        grid.setSpacing(14)
-        tiles = [
-            ("▦", "Items & Materials", "Item definitions and properties"),
-            ("⬡", "Armor & Wearables", "Protection, durability and visuals"),
-            ("▧", "Blocks", "Block properties and geometry"),
-            ("⌂", "Entities", "Entity behavior and components"),
-            ("◈", "Structures & Biomes", "World generation configuration"),
-            ("✧", "Models & Animations", "3D assets and keyframes"),
-            ("▤", "Texture Studio", "Pixel-art editor with PNG export"),
-            ("⚙", "Event Sheet & Code", "Visual events plus JSON, JS, Molang and functions")
+        grid.setSpacing(10)
+        cards = [
+            ("Предмет", "Создать предмет для игры", "item"),
+            ("Блок", "Создать собственный блок", "block"),
+            ("Броня", "Создать шлем, нагрудник и другое", "armor"),
+            ("Текстура", "Нарисовать картинку", "texture"),
+            ("3D-модель", "Открыть и посмотреть модель", "model"),
+            ("События", "Настроить действия и код", "logic"),
+            ("Добавить PNG в игру", "Подключить текстуру к проекту", "registry"),
         ]
-        for i, (symbol, name, detail) in enumerate(tiles):
-            tile = QtWidgets.QFrame()
-            tile.setObjectName("Tile")
-            tl = QtWidgets.QVBoxLayout(tile)
-            tl.setContentsMargins(18, 16, 18, 16)
-            icon = QtWidgets.QLabel(symbol)
-            icon.setStyleSheet("font-size:23pt;color:#8b9cff;")
+        for i, (name, description, key) in enumerate(cards):
+            card = QtWidgets.QFrame()
+            card.setObjectName("Card")
+            box = QtWidgets.QVBoxLayout(card)
             heading = QtWidgets.QLabel(name)
-            heading.setStyleSheet("font-size:12pt;font-weight:650;")
-            desc = QtWidgets.QLabel(detail)
+            heading.setStyleSheet("font-size:14pt;font-weight:700;")
+            desc = QtWidgets.QLabel(description)
             desc.setObjectName("Muted")
-            action = QtWidgets.QPushButton("Open editor  →")
-            action.clicked.connect(lambda checked=False, n=name: self.open_editor(n))
-            tl.addWidget(icon)
-            tl.addWidget(heading)
-            tl.addWidget(desc)
-            tl.addStretch(1)
-            tl.addWidget(action)
-            grid.addWidget(tile, i // 3, i % 3)
-        page.addLayout(grid)
+            desc.setWordWrap(True)
+            button = QtWidgets.QPushButton("Открыть")
+            button.clicked.connect(lambda checked=False, k=key: self.open_tool(k))
+            box.addWidget(heading)
+            box.addWidget(desc)
+            box.addStretch(1)
+            box.addWidget(button)
+            grid.addWidget(card, i // 3, i % 3)
+        layout.addLayout(grid, 1)
 
-        panel = QtWidgets.QFrame()
-        panel.setObjectName("Panel")
-        pl = QtWidgets.QVBoxLayout(panel)
-        pl.setContentsMargins(18, 14, 18, 14)
-        recent = QtWidgets.QLabel("Recent project")
-        recent.setStyleSheet("font-weight:650;font-size:12pt;")
-        self.project_label = QtWidgets.QLabel("No project opened yet")
-        self.project_label.setObjectName("Muted")
-        pl.addWidget(recent)
-        pl.addWidget(self.project_label)
-        page.addWidget(panel)
-        page.addStretch(1)
-        root.addWidget(sidebar)
-        root.addWidget(content, 1)
-        self.setCentralWidget(central)
-        self.statusBar().showMessage("Ready • Create a project to get started")
+        export_card = QtWidgets.QFrame()
+        export_card.setObjectName("Card")
+        erow = QtWidgets.QHBoxLayout(export_card)
+        text_box = QtWidgets.QVBoxLayout()
+        export_title = QtWidgets.QLabel("ШАГ 3. Собрать готовый аддон")
+        export_title.setStyleSheet("font-size:14pt;font-weight:700;")
+        export_desc = QtWidgets.QLabel("Программа упакует BP и RP в файл .mcaddon для Minecraft.")
+        export_desc.setObjectName("Muted")
+        export_desc.setWordWrap(True)
+        text_box.addWidget(export_title)
+        text_box.addWidget(export_desc)
+        erow.addLayout(text_box, 1)
+        export_btn = QtWidgets.QPushButton("Экспортировать .mcaddon")
+        export_btn.setObjectName("Primary")
+        export_btn.clicked.connect(self.export_project)
+        erow.addWidget(export_btn)
+        layout.addWidget(export_card)
+        self.setCentralWidget(root)
+        self.statusBar().showMessage("Сначала создайте или откройте проект.")
+
+    def set_project(self, path):
+        self.project_path = Path(path)
+        self.project_label.setText("ТЕКУЩИЙ ПРОЕКТ: " + str(self.project_path))
+        self.statusBar().showMessage("Проект открыт. Выбирайте нужный редактор.")
 
     def new_project(self):
         dialog = ProjectDialog(self)
         if dialog.exec_() != QtWidgets.QDialog.Accepted:
             return
-        name = dialog.name.text().strip()
-        description = dialog.description.text().strip() or name
-        location = dialog.location.text().strip()
-        if not name or not location:
-            QtWidgets.QMessageBox.warning(self, "Missing information", "Enter a project name and save location.")
-            return
         try:
-            project = create_project(location, name, description)
-            self.project_path = project
-            self.project_label.setText(str(project))
-            self.statusBar().showMessage("Project created successfully")
-            QtWidgets.QMessageBox.information(self, "Project created",
-                "Your project is ready!\n\n" + str(project) + "\n\nFolders created: BP and RP.")
+            project = create_project(dialog.location.text().strip(), dialog.name.text().strip(),
+                                     dialog.description.text().strip() or dialog.name.text().strip())
+            self.set_project(project)
+            QtWidgets.QMessageBox.information(self, "Готово!", "Проект создан. Теперь выберите, что добавить.")
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Could not create project", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Ошибка создания", str(exc))
 
-    def open_editor(self, name):
-        if name == "Texture Studio":
-            TextureEditor(self).exec_()
-            return
-        if name in ("Event Sheet & Code", "Logic & Code"):
-            LogicWorkspace(self).exec_()
-            return
-        if name == "Items & Materials":
-            ItemEditor(self).exec_()
-            return
-        if name == "Blocks":
-            BlockEditor(self).exec_()
-            return
-        if name == "Armor & Wearables":
-            ArmorEditor(self).exec_()
-            return
-        if name == "Resource Pack Textures":
-            TextureRegistryEditor(self).exec_()
-            return
-        if name in ("Models & Animations", "3D Workspace"):
-            ModelWorkspace(self).exec_()
-            return
-        if name == "Export":
-            self.export_mcaddon()
-            return
-        self.show_placeholder(name)
-
-    def export_mcaddon(self):
-        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose project root (contains BP and RP)")
+    def open_project(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Выберите главную папку проекта")
         if not folder:
             return
         project = Path(folder)
-        bp, rp = project / "BP", project / "RP"
-        if not (bp / "manifest.json").is_file() or not (rp / "manifest.json").is_file():
-            QtWidgets.QMessageBox.warning(self, "Invalid project", "The selected folder must contain BP/manifest.json and RP/manifest.json.")
+        if not (project / "BP" / "manifest.json").is_file() or not (project / "RP" / "manifest.json").is_file():
+            QtWidgets.QMessageBox.warning(self, "Не та папка", "Внутри выбранной папки должны быть BP и RP. Выберите главную папку проекта.")
+            return
+        self.set_project(project)
+
+    def ensure_project(self):
+        if self.project_path and (self.project_path / "BP").is_dir() and (self.project_path / "RP").is_dir():
+            return True
+        QtWidgets.QMessageBox.information(self, "Нужен проект", "Сначала создайте проект или нажмите «Открыть проект».")
+        self.open_project()
+        return self.project_path is not None
+
+    def open_tool(self, key):
+        if key not in ("model", "texture", "logic") and not self.ensure_project():
+            return
+        bp = str(self.project_path / "BP") if self.project_path else ""
+        rp = str(self.project_path / "RP") if self.project_path else ""
+        if key == "item":
+            ItemEditor(self, bp).exec_()
+        elif key == "block":
+            BlockEditor(self, bp).exec_()
+        elif key == "armor":
+            ArmorEditor(self, bp).exec_()
+        elif key == "texture":
+            TextureEditor(self).exec_()
+        elif key == "model":
+            ModelWorkspace(self).exec_()
+        elif key == "logic":
+            LogicWorkspace(self).exec_()
+        elif key == "registry":
+            TextureRegistryEditor(self, rp).exec_()
+
+    def export_project(self):
+        if not self.ensure_project():
+            return
+        suggested = str(self.project_path / (self.project_path.name + ".mcaddon"))
+        target, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Куда сохранить аддон", suggested, "Minecraft Add-on (*.mcaddon)")
+        if not target:
             return
         try:
-            for pack in (bp, rp):
-                data = json.loads((pack / "manifest.json").read_text(encoding="utf-8-sig"))
-                if "header" not in data or "modules" not in data:
-                    raise ValueError(pack.name + " manifest is missing header or modules.")
-            target, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export Minecraft add-on", project.name + ".mcaddon", "Minecraft Add-on (*.mcaddon)")
-            if not target:
-                return
-            import zipfile
-            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
-                for pack in (bp, rp):
-                    for file_path in pack.rglob("*"):
-                        if file_path.is_file():
-                            archive.write(str(file_path), str(Path(pack.name) / file_path.relative_to(pack)))
-            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:\n" + target + "\n\nIt contains both BP and RP folders. Test it in your Bedrock version.")
+            result = export_mcaddon(self.project_path, target)
+            QtWidgets.QMessageBox.information(self, "Аддон готов!", "Файл создан:\n" + str(result) + "\n\nОткройте его на устройстве с Minecraft Bedrock.")
+            self.statusBar().showMessage("Экспорт завершён.")
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
-
-    def show_placeholder(self, name):
-        if name == "Resource Pack Textures":
-            TextureRegistryEditor(self).exec_()
-            return
-        if name == "Dashboard":
-            self.statusBar().showMessage("Dashboard")
-            return
-        QtWidgets.QMessageBox.information(self, name,
-            name + " is planned for a later phase. The Texture Studio and Logic & Code workspace are available now.")
+            QtWidgets.QMessageBox.critical(self, "Не удалось экспортировать", str(exc))
 
 def main():
     app = QtWidgets.QApplication(sys.argv)

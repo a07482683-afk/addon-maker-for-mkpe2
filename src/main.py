@@ -8,7 +8,7 @@ from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistr
 from model_editor import ModelWorkspace
 
 APP_NAME = "Addon Maker for MCPE"
-APP_VERSION = "0.4.0"
+APP_VERSION = "0.5.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from PySide2 import QtCore, QtWidgets
+from PySide2 import QtCore, QtGui, QtWidgets
 
 
 IDENTIFIER_RE = re.compile(r"^[a-z0-9_.-]+:[a-z0-9_./-]+$")
@@ -14,8 +14,9 @@ class DefinitionEditor(QtWidgets.QDialog):
     title_text = "Definition"
     default_namespace = "demo"
 
-    def __init__(self, parent=None, bp_path=None):
+    def __init__(self, parent=None, bp_path=None, rp_path=None):
         super().__init__(parent)
+        self.rp_path = Path(rp_path) if rp_path else None
         self.setWindowTitle(self.title_text)
         self.resize(820, 680)
         root = QtWidgets.QVBoxLayout(self)
@@ -98,9 +99,74 @@ class DefinitionEditor(QtWidgets.QDialog):
             QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
 
 
+
+class PixelIconCanvas(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFixedSize(320, 320)
+        self.image = QtGui.QImage(16, 16, QtGui.QImage.Format_ARGB32)
+        self.image.fill(QtCore.Qt.transparent)
+        self.color = QtGui.QColor("#65d7ff")
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtGui.QColor("#20242d"))
+        for y in range(16):
+            for x in range(16):
+                if (x + y) % 2 == 0:
+                    painter.fillRect(x*20, y*20, 20, 20, QtGui.QColor("#343a46"))
+        painter.drawImage(self.rect(), self.image)
+        painter.setPen(QtGui.QPen(QtGui.QColor(255,255,255,45), 1))
+        for i in range(17):
+            painter.drawLine(i*20, 0, i*20, 320)
+            painter.drawLine(0, i*20, 320, i*20)
+    def paint_at(self, pos, erase=False):
+        x, y = pos.x() // 20, pos.y() // 20
+        if 0 <= x < 16 and 0 <= y < 16:
+            p = QtGui.QPainter(self.image)
+            p.fillRect(x, y, 1, 1, QtCore.Qt.transparent if erase else self.color)
+            p.end()
+            self.update()
+    def mousePressEvent(self, event):
+        self.paint_at(event.pos(), event.button() == QtCore.Qt.RightButton)
+    def mouseMoveEvent(self, event):
+        if event.buttons() & (QtCore.Qt.LeftButton | QtCore.Qt.RightButton):
+            self.paint_at(event.pos(), bool(event.buttons() & QtCore.Qt.RightButton))
+
+
+class PixelIconDialog(QtWidgets.QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Нарисовать иконку предмета — 16×16")
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(QtWidgets.QLabel("ЛКМ — рисовать. ПКМ — стирать. Иконка сохранится в Resource Pack."))
+        self.canvas = PixelIconCanvas()
+        layout.addWidget(self.canvas, 0, QtCore.Qt.AlignCenter)
+        row = QtWidgets.QHBoxLayout()
+        color = QtWidgets.QPushButton("Выбрать цвет")
+        color.clicked.connect(self.choose_color)
+        clear = QtWidgets.QPushButton("Очистить")
+        clear.clicked.connect(self.clear)
+        row.addWidget(color)
+        row.addWidget(clear)
+        row.addStretch(1)
+        layout.addLayout(row)
+        buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Save | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.button(QtWidgets.QDialogButtonBox.Save).setText("Использовать иконку")
+        buttons.button(QtWidgets.QDialogButtonBox.Cancel).setText("Отмена")
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+    def choose_color(self):
+        color = QtWidgets.QColorDialog.getColor(self.canvas.color, self, "Цвет пикселя", QtWidgets.QColorDialog.ShowAlphaChannel)
+        if color.isValid():
+            self.canvas.color = color
+    def clear(self):
+        self.canvas.image.fill(QtCore.Qt.transparent)
+        self.canvas.update()
+
 class ItemEditor(DefinitionEditor):
     folder_name = "items"
-    title_text = "Items & Materials Editor"
+    title_text = "Редактор предметов и материалов"
 
     def add_fields(self, form):
         self.stack = QtWidgets.QSpinBox()
@@ -113,7 +179,42 @@ class ItemEditor(DefinitionEditor):
         form.addRow("Creative category", self.category)
         form.addRow("Texture key", self.icon)
         form.addRow("Maximum stack", self.stack)
+
         form.addRow("Visual effect", self.foil)
+        self.draw_icon = QtWidgets.QPushButton("Нарисовать иконку 16×16…")
+        self.draw_icon.clicked.connect(self.open_icon_painter)
+        form.addRow("Иконка предмета", self.draw_icon)
+        self.icon_status = QtWidgets.QLabel("Иконка пока не нарисована")
+        form.addRow("", self.icon_status)
+
+    def open_icon_painter(self):
+        dialog = PixelIconDialog(self)
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        if not self.rp_path or not self.rp_path.is_dir():
+            QtWidgets.QMessageBox.warning(self, "Нет Resource Pack", "Сначала создай или открой проект с папкой RP.")
+            return
+        key = self.icon.text().strip() or self.identifier.text().split(":")[-1]
+        key = re.sub(r"[^a-zA-Z0-9_./-]", "_", key)
+        target = self.rp_path / "textures" / "items" / (key.replace("/", "_") + ".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not dialog.canvas.image.save(str(target), "PNG"):
+            QtWidgets.QMessageBox.critical(self, "Ошибка", "Не удалось сохранить PNG.")
+            return
+        atlas_path = self.rp_path / "textures" / "item_texture.json"
+        atlas = {"resource_pack_name": "addon", "texture_name": "atlas.items", "texture_data": {}}
+        if atlas_path.is_file():
+            try:
+                atlas = json.loads(atlas_path.read_text(encoding="utf-8-sig"))
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Ошибка атласа", "Не удалось прочитать item_texture.json: " + str(exc))
+                return
+        atlas.setdefault("texture_data", {})[key] = {"textures": "textures/items/" + target.stem}
+        atlas_path.parent.mkdir(parents=True, exist_ok=True)
+        atlas_path.write_text(json.dumps(atlas, indent=2, ensure_ascii=False) + "\\n", encoding="utf-8")
+        self.icon.setText(key)
+        self.icon_status.setText("Иконка сохранена: " + str(target))
+
 
     def connect_fields(self):
         for widget, signal in (
@@ -146,7 +247,7 @@ class ItemEditor(DefinitionEditor):
 
 class BlockEditor(DefinitionEditor):
     folder_name = "blocks"
-    title_text = "Blocks Editor"
+    title_text = "Редактор блоков"
 
     def add_fields(self, form):
         self.category = QtWidgets.QComboBox()

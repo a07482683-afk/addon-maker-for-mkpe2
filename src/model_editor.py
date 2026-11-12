@@ -6,32 +6,55 @@ from PySide2 import QtCore, QtGui, QtWidgets
 
 
 class Mesh:
-    def __init__(self, vertices, faces, source):
-        self.vertices, self.faces, self.source = vertices, faces, source
+    def __init__(self, vertices, faces, source, groups=None, texcoords=None):
+        self.vertices = vertices
+        self.faces = faces
+        self.source = source
+        self.groups = groups or {"root": list(range(len(faces)))}
+        self.texcoords = texcoords or []
 
 
 def load_obj(path):
-    vertices, faces = [], []
+    vertices, texcoords, faces = [], [], []
+    groups = {}
+    active = "root"
     with open(str(path), "r", encoding="utf-8", errors="replace") as stream:
-        for line in stream:
-            line = line.strip()
-            if line.startswith("v "):
+        for raw_line in stream:
+            line = raw_line.strip()
+            if line.startswith("o ") or line.startswith("g "):
+                active = re.sub(r"[^A-Za-z0-9_]+", "_", line[2:].strip()) or "root"
+                groups.setdefault(active, [])
+            elif line.startswith("v "):
                 values = line.split()
                 if len(values) >= 4:
                     vertices.append(tuple(float(v) for v in values[1:4]))
+            elif line.startswith("vt "):
+                values = line.split()
+                if len(values) >= 3:
+                    texcoords.append(tuple(float(v) for v in values[1:3]))
             elif line.startswith("f "):
-                face = []
+                corners = []
                 for token in line.split()[1:]:
-                    raw = token.split("/")[0]
-                    if raw:
-                        index = int(raw)
-                        face.append(index - 1 if index > 0 else len(vertices) + index)
-                if len(face) >= 3 and all(0 <= i < len(vertices) for i in face):
-                    for i in range(1, len(face) - 1):
-                        faces.append((face[0], face[i], face[i + 1]))
+                    parts = token.split("/")
+                    vi = int(parts[0])
+                    vi = vi - 1 if vi > 0 else len(vertices) + vi
+                    ti = None
+                    if len(parts) > 1 and parts[1]:
+                        ti = int(parts[1])
+                        ti = ti - 1 if ti > 0 else len(texcoords) + ti
+                    if vi < 0 or vi >= len(vertices):
+                        raise ValueError("OBJ contains an invalid vertex index.")
+                    corners.append((vi, ti))
+                if len(corners) >= 3:
+                    for i in range(1, len(corners) - 1):
+                        tri = (corners[0], corners[i], corners[i + 1])
+                        face_index = len(faces)
+                        faces.append(tuple(c[0] for c in tri))
+                        groups.setdefault(active, []).append(face_index)
+    groups = {name: ids for name, ids in groups.items() if ids}
     if not vertices or not faces:
         raise ValueError("OBJ file contains no readable polygon mesh.")
-    return Mesh(vertices, faces, str(path))
+    return Mesh(vertices, faces, str(path), groups, texcoords)
 
 
 def load_ascii_fbx(path):
@@ -41,11 +64,11 @@ def load_ascii_fbx(path):
     vm = re.search(r"Vertices\s*:\s*\*\s*\d+\s*\{\s*a\s*:\s*([^}]*)\}", text, re.S)
     pm = re.search(r"PolygonVertexIndex\s*:\s*\*\s*\d+\s*\{\s*a\s*:\s*([^}]*)\}", text, re.S)
     if not vm or not pm:
-        raise ValueError("Could not read FBX mesh arrays. Try exporting as ASCII FBX.")
+        raise ValueError("Could not read FBX mesh arrays. Export as ASCII FBX or OBJ.")
     numbers = [float(x) for x in re.findall(r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?", vm.group(1))]
     if len(numbers) < 9 or len(numbers) % 3:
         raise ValueError("FBX vertex array is invalid.")
-    vertices = [tuple(numbers[i:i+3]) for i in range(0, len(numbers), 3)]
+    vertices = [tuple(numbers[i:i + 3]) for i in range(0, len(numbers), 3)]
     indices = [int(x) for x in re.findall(r"-?\d+", pm.group(1))]
     faces, face = [], []
     for value in indices:
@@ -55,8 +78,8 @@ def load_ascii_fbx(path):
         face.append(index)
         if value < 0:
             if len(face) >= 3:
-                for i in range(1, len(face)-1):
-                    faces.append((face[0], face[i], face[i+1]))
+                for i in range(1, len(face) - 1):
+                    faces.append((face[0], face[i], face[i + 1]))
             face = []
     if not faces:
         raise ValueError("FBX file contains no readable polygons.")
@@ -72,30 +95,77 @@ def import_mesh(path):
     raise ValueError("Choose an OBJ or FBX file.")
 
 
-def bedrock_geometry(mesh, identifier):
-    mins = [min(v[i] for v in mesh.vertices) for i in range(3)]
-    maxs = [max(v[i] for v in mesh.vertices) for i in range(3)]
+def _safe_bone_name(name, index):
+    cleaned = re.sub(r"[^A-Za-z0-9_]", "_", name).strip("_") or "part"
+    if cleaned[0].isdigit():
+        cleaned = "part_" + cleaned
+    return (cleaned[:40] + "_" + str(index))[:48]
+
+
+def bedrock_geometry(mesh, identifier, texture_width=64, texture_height=64):
+    all_vertices = mesh.vertices
+    mins = [min(v[i] for v in all_vertices) for i in range(3)]
+    maxs = [max(v[i] for v in all_vertices) for i in range(3)]
     spans = [maxs[i] - mins[i] for i in range(3)]
     scale = 16.0 / (max(spans) or 1.0)
-    origin = [round(mins[i] * scale, 4) for i in range(3)]
-    size = [max(0.01, round(spans[i] * scale, 4)) for i in range(3)]
     safe_id = identifier if identifier.startswith("geometry.") else "geometry." + identifier
+    bones = []
+    group_items = list(mesh.groups.items()) if mesh.groups else [("root", list(range(len(mesh.faces))))]
+    for index, (group_name, face_ids) in enumerate(group_items):
+        used = sorted({vertex_id for face_id in face_ids for vertex_id in mesh.faces[face_id]})
+        if not used:
+            continue
+        part_min = [min(mesh.vertices[v][i] for v in used) for i in range(3)]
+        part_max = [max(mesh.vertices[v][i] for v in used) for i in range(3)]
+        origin = [round((part_min[i] - mins[i]) * scale - 8.0, 4) for i in range(3)]
+        size = [max(0.01, round((part_max[i] - part_min[i]) * scale, 4)) for i in range(3)]
+        bones.append({
+            "name": _safe_bone_name(group_name, index),
+            "pivot": [round(origin[0] + size[0] / 2, 4), round(origin[1], 4), round(origin[2] + size[2] / 2, 4)],
+            "cubes": [{
+                "origin": origin,
+                "size": size,
+                "uv": [0, 0]
+            }]
+        })
+    if not bones:
+        raise ValueError("No usable mesh groups were found.")
     return {
         "format_version": "1.12.0",
         "minecraft:geometry": [{
             "description": {
                 "identifier": safe_id,
-                "texture_width": 64,
-                "texture_height": 64,
+                "texture_width": int(texture_width),
+                "texture_height": int(texture_height),
                 "visible_bounds_width": 2.0,
                 "visible_bounds_height": 2.0,
                 "visible_bounds_offset": [0, 0.5, 0]
             },
-            "bones": [{
-                "name": "root", "pivot": [0, 0, 0],
-                "cubes": [{"origin": origin, "size": size, "uv": [0, 0]}]
-            }]
+            "bones": bones
         }]
+    }
+
+
+def bedrock_animation(identifier, duration, axis, angle):
+    safe_id = identifier if identifier.startswith("animation.") else "animation." + identifier
+    rotation = [0.0, 0.0, 0.0]
+    rotation[{"X": 0, "Y": 1, "Z": 2}[axis]] = float(angle)
+    return {
+        "format_version": "1.8.0",
+        "animations": {
+            safe_id: {
+                "loop": True,
+                "animation_length": float(duration),
+                "bones": {
+                    "root": {
+                        "rotation": {
+                            "0.0": [0, 0, 0],
+                            str(float(duration)): rotation
+                        }
+                    }
+                }
+            }
+        }
     }
 
 
@@ -140,36 +210,36 @@ class MeshView(QtWidgets.QWidget):
             return
         verts = self.mesh.vertices
         center = [sum(v[i] for v in verts) / len(verts) for i in range(3)]
-        radius = max((sum((v[i]-center[i])**2 for i in range(3))**0.5 for v in verts), default=1) or 1
+        radius = max((sum((v[i] - center[i]) ** 2 for i in range(3)) ** 0.5 for v in verts), default=1) or 1
         yaw, pitch = math.radians(self.yaw), math.radians(self.pitch)
         cy, sy, cp, sp = math.cos(yaw), math.sin(yaw), math.cos(pitch), math.sin(pitch)
         scale = min(self.width(), self.height()) * 0.38 * self.zoom / radius
         projected = []
         for v in verts:
-            x, y, z = [v[i]-center[i] for i in range(3)]
-            rx, rz = x*cy-z*sy, x*sy+z*cy
-            ry, rz2 = y*cp-rz*sp, y*sp+rz*cp
-            projected.append((self.width()/2+rx*scale, self.height()/2-ry*scale, rz2))
+            x, y, z = [v[i] - center[i] for i in range(3)]
+            rx, rz = x * cy - z * sy, x * sy + z * cy
+            ry, rz2 = y * cp - rz * sp, y * sp + rz * cp
+            projected.append((self.width() / 2 + rx * scale, self.height() / 2 - ry * scale, rz2))
         triangles = []
         for face in self.mesh.faces:
             pts = [projected[i] for i in face]
-            triangles.append((sum(p[2] for p in pts)/3, pts))
+            triangles.append((sum(p[2] for p in pts) / 3, pts))
         triangles.sort(key=lambda item: item[0])
         for depth, pts in triangles:
             poly = QtGui.QPolygonF([QtCore.QPointF(p[0], p[1]) for p in pts])
-            shade = max(65, min(190, int(125 + depth*2)))
-            painter.setBrush(QtGui.QColor(shade, min(255, shade+8), min(255, shade+24)))
+            shade = max(65, min(190, int(125 + depth * 2)))
+            painter.setBrush(QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24)))
             painter.setPen(QtGui.QPen(QtGui.QColor("#202a3a"), 1))
             painter.drawPolygon(poly)
         painter.setPen(QtGui.QColor("#aab6c8"))
-        painter.drawText(12, 22, "Faces: %d   Vertices: %d" % (len(self.mesh.faces), len(verts)))
+        painter.drawText(12, 22, "Faces: %d   Vertices: %d   Parts: %d" % (len(self.mesh.faces), len(verts), len(self.mesh.groups)))
 
 
 class ModelWorkspace(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("3D Models & Bedrock Geometry")
-        self.resize(1080, 700)
+        self.resize(1080, 760)
         self.mesh = None
         root = QtWidgets.QVBoxLayout(self)
         bar = QtWidgets.QHBoxLayout()
@@ -181,16 +251,45 @@ class ModelWorkspace(QtWidgets.QDialog):
         root.addLayout(bar)
         self.view = MeshView()
         root.addWidget(self.view, 1)
-        controls = QtWidgets.QHBoxLayout()
+        geometry_box = QtWidgets.QGroupBox("Bedrock geometry")
+        geometry_form = QtWidgets.QFormLayout(geometry_box)
         self.geometry_id = QtWidgets.QLineEdit("geometry.custom_model")
-        self.geometry_id.setMinimumWidth(220)
-        controls.addWidget(QtWidgets.QLabel("Geometry identifier"))
-        controls.addWidget(self.geometry_id)
-        save = QtWidgets.QPushButton("Save Bedrock geometry JSON…")
-        save.clicked.connect(self.save_geometry)
-        controls.addWidget(save)
-        root.addLayout(controls)
-        note = QtWidgets.QLabel("Preview shows the imported mesh. Current Bedrock export creates a normalized root-bone bounding cube proxy, not a triangle-to-cube mesh conversion.")
+        self.texture_width = QtWidgets.QSpinBox()
+        self.texture_width.setRange(16, 1024)
+        self.texture_width.setValue(64)
+        self.texture_height = QtWidgets.QSpinBox()
+        self.texture_height.setRange(16, 1024)
+        self.texture_height.setValue(64)
+        geometry_form.addRow("Identifier", self.geometry_id)
+        texture_row = QtWidgets.QHBoxLayout()
+        texture_row.addWidget(self.texture_width)
+        texture_row.addWidget(QtWidgets.QLabel("×"))
+        texture_row.addWidget(self.texture_height)
+        geometry_form.addRow("Texture size", texture_row)
+        save_geometry = QtWidgets.QPushButton("Export Geometry JSON…")
+        save_geometry.clicked.connect(self.save_geometry)
+        geometry_form.addRow(save_geometry)
+        root.addWidget(geometry_box)
+        animation_box = QtWidgets.QGroupBox("Simple animation keyframes")
+        animation_form = QtWidgets.QFormLayout(animation_box)
+        self.animation_id = QtWidgets.QLineEdit("animation.custom_model.rotate")
+        self.duration = QtWidgets.QDoubleSpinBox()
+        self.duration.setRange(0.1, 120.0)
+        self.duration.setValue(2.0)
+        self.axis = QtWidgets.QComboBox()
+        self.axis.addItems(["X", "Y", "Z"])
+        self.angle = QtWidgets.QDoubleSpinBox()
+        self.angle.setRange(-360.0, 360.0)
+        self.angle.setValue(30.0)
+        animation_form.addRow("Animation identifier", self.animation_id)
+        animation_form.addRow("Duration (seconds)", self.duration)
+        animation_form.addRow("Rotation axis", self.axis)
+        animation_form.addRow("End rotation (degrees)", self.angle)
+        save_animation = QtWidgets.QPushButton("Export Animation JSON…")
+        save_animation.clicked.connect(self.save_animation)
+        animation_form.addRow(save_animation)
+        root.addWidget(animation_box)
+        note = QtWidgets.QLabel("OBJ groups/objects become separate Bedrock bones. Each part is currently represented by a fitted cuboid; OBJ UV coordinates are read but not yet transferred to individual cube faces. ASCII FBX is supported; binary FBX is not.")
         note.setWordWrap(True)
         note.setStyleSheet("color:#e6c27a;")
         root.addWidget(note)
@@ -214,8 +313,21 @@ class ModelWorkspace(QtWidgets.QDialog):
         if not filename:
             return
         try:
-            data = bedrock_geometry(self.mesh, self.geometry_id.text().strip() or "geometry.custom_model")
+            data = bedrock_geometry(self.mesh, self.geometry_id.text().strip() or "geometry.custom_model",
+                                    self.texture_width.value(), self.texture_height.value())
             Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-            QtWidgets.QMessageBox.information(self, "Saved", "Starter Bedrock geometry saved to:\n" + filename)
+            QtWidgets.QMessageBox.information(self, "Saved", "Bedrock geometry exported to:\n" + filename)
         except Exception as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
+
+    def save_animation(self):
+        filename, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Save Bedrock animation", "animation.custom_model.json", "JSON files (*.json)")
+        if not filename:
+            return
+        try:
+            data = bedrock_animation(self.animation_id.text().strip() or "animation.custom_model.rotate",
+                                     self.duration.value(), self.axis.currentText(), self.angle.value())
+            Path(filename).write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+            QtWidgets.QMessageBox.information(self, "Saved", "Starter animation JSON exported to:\n" + filename)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))

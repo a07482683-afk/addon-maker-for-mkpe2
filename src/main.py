@@ -5,9 +5,10 @@ from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
 from editors import TextureEditor, LogicWorkspace
 from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistryEditor
+from model_editor import ModelWorkspace
 
 APP_NAME = "Addon Maker for MCPE"
-APP_VERSION = "0.3.0"
+APP_VERSION = "0.4.0"
 
 def write_json(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,6 +96,7 @@ class MainWindow(QtWidgets.QMainWindow):
         QLineEdit { background:#14171e; border:1px solid #3b4250; border-radius:7px; padding:9px; }
         QStatusBar { color:#aab1bf; background:#111319; }
         """)
+        self.project_path = None
         self.build_ui()
 
     def build_ui(self):
@@ -225,6 +227,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             project = create_project(location, name, description)
+            self.project_path = project
             self.project_label.setText(str(project))
             self.statusBar().showMessage("Project created successfully")
             QtWidgets.QMessageBox.information(self, "Project created",
@@ -251,7 +254,40 @@ class MainWindow(QtWidgets.QMainWindow):
         if name == "Resource Pack Textures":
             TextureRegistryEditor(self).exec_()
             return
+        if name in ("Models & Animations", "3D Workspace"):
+            ModelWorkspace(self).exec_()
+            return
+        if name == "Export":
+            self.export_mcaddon()
+            return
         self.show_placeholder(name)
+
+    def export_mcaddon(self):
+        folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Choose project root (contains BP and RP)")
+        if not folder:
+            return
+        project = Path(folder)
+        bp, rp = project / "BP", project / "RP"
+        if not (bp / "manifest.json").is_file() or not (rp / "manifest.json").is_file():
+            QtWidgets.QMessageBox.warning(self, "Invalid project", "The selected folder must contain BP/manifest.json and RP/manifest.json.")
+            return
+        try:
+            for pack in (bp, rp):
+                data = json.loads((pack / "manifest.json").read_text(encoding="utf-8-sig"))
+                if "header" not in data or "modules" not in data:
+                    raise ValueError(pack.name + " manifest is missing header or modules.")
+            target, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export Minecraft add-on", project.name + ".mcaddon", "Minecraft Add-on (*.mcaddon)")
+            if not target:
+                return
+            import zipfile
+            with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
+                for pack in (bp, rp):
+                    for file_path in pack.rglob("*"):
+                        if file_path.is_file():
+                            archive.write(str(file_path), str(Path(pack.name) / file_path.relative_to(pack)))
+            QtWidgets.QMessageBox.information(self, "Export complete", "The .mcaddon archive was created:\n" + target + "\n\nIt contains both BP and RP folders. Test it in your Bedrock version.")
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Export failed", str(exc))
 
     def show_placeholder(self, name):
         if name == "Resource Pack Textures":\n            TextureRegistryEditor(self).exec_()\n            return\n        if name == "Dashboard":

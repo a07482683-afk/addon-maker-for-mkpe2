@@ -1,6 +1,7 @@
 import json
 import math
 import re
+import shutil
 from pathlib import Path
 from PySide2 import QtCore, QtGui, QtWidgets
 
@@ -244,11 +245,13 @@ class MeshView(QtWidgets.QWidget):
 
 
 class ModelWorkspace(QtWidgets.QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, project_path=None):
         super().__init__(parent)
         self.setWindowTitle("3D-редактор — предпросмотр Minecraft")
         self.resize(1080, 760)
         self.mesh = None
+        self.project_path = Path(project_path) if project_path else None
+        self.model_file = None
         root = QtWidgets.QVBoxLayout(self)
         bar = QtWidgets.QHBoxLayout()
         self.path_label = QtWidgets.QLabel("Модель ещё не загружена")
@@ -332,9 +335,19 @@ class ModelWorkspace(QtWidgets.QDialog):
         if not filename:
             return
         try:
-            self.mesh = import_mesh(filename)
+            source = Path(filename)
+            if self.project_path:
+                model_dir = self.project_path / "Models"
+                model_dir.mkdir(parents=True, exist_ok=True)
+                saved = model_dir / source.name
+                if source.resolve() != saved.resolve():
+                    shutil.copy2(str(source), str(saved))
+                self.model_file = saved
+            else:
+                self.model_file = source
+            self.mesh = import_mesh(str(self.model_file))
             self.view.set_mesh(self.mesh)
-            self.path_label.setText(Path(filename).name)
+            self.path_label.setText(self.model_file.name)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка импорта", str(exc))
 

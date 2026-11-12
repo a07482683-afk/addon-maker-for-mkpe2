@@ -120,7 +120,7 @@ class MainWindow(QtWidgets.QMainWindow):
         for label in ["Dashboard", "My Projects", "Content Editors", "Texture Studio", "Resource Pack Textures", "Logic & Code", "3D Workspace", "Export"]:
             button = QtWidgets.QPushButton(label)
             button.setObjectName("Nav")
-            button.clicked.connect(lambda checked=False, n=label: self.show_placeholder(n))
+            button.clicked.connect(lambda checked=False, n=label: self.open_editor(n))
             side.addWidget(button)
         side.addStretch(1)
         version = QtWidgets.QLabel("MCPE / Bedrock Edition

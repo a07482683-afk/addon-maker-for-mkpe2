@@ -81,6 +81,7 @@ class ResourceEditor(QtWidgets.QDialog):
     def _make_fields(self, data):
         while self.form.rowCount():
             self.form.removeRow(0)
+        self.scalar_edits = {}
         if not isinstance(data, dict):
             return
         self._walk_fields(data, "")
@@ -92,13 +93,15 @@ class ResourceEditor(QtWidgets.QDialog):
             return
         for key, item in value.items():
             path = (prefix + "." + key).strip(".")
-            if isinstance(item, (str, int, float, bool)) or item is None:
-                if key in ("identifier", "description", "format_version") or "texture" in key.lower() or key in ("name",):
-                    edit = QtWidgets.QLineEdit(str(item if item is not None else ""))
-                    edit.setReadOnly(True)
-                    self.form.addRow(path, edit)
-            elif isinstance(item, dict):
+            if isinstance(item, dict):
                 self._walk_fields(item, path)
+            elif isinstance(item, list):
+                continue
+            else:
+                edit = QtWidgets.QLineEdit("" if item is None else str(item))
+                edit.setToolTip("Путь в JSON: " + path)
+                self.scalar_edits[path] = (edit, item)
+                self.form.addRow(path, edit)
 
     def _load_textures(self):
         self.texture_list.clear()
@@ -123,7 +126,30 @@ class ResourceEditor(QtWidgets.QDialog):
                 self.tabs.setCurrentIndex(1)
                 return
         try:
-            self.path.write_text(text, encoding="utf-8")
+            if self.path.suffix.lower() == ".json":
+                data = json.loads(text)
+                for dotted, pair in getattr(self, "scalar_edits", {}).items():
+                    edit, original = pair
+                    target = data
+                    parts = dotted.split(".")
+                    for part in parts[:-1]:
+                        if not isinstance(target, dict) or part not in target:
+                            target = None
+                            break
+                        target = target[part]
+                    if isinstance(target, dict) and parts[-1] in target:
+                        value = edit.text()
+                        if isinstance(original, bool):
+                            value = value.strip().lower() in ("1", "true", "yes", "да")
+                        elif isinstance(original, int) and not isinstance(original, bool):
+                            try: value = int(value)
+                            except ValueError: raise ValueError("Поле %s должно быть целым числом." % dotted)
+                        elif isinstance(original, float):
+                            try: value = float(value.replace(",", "."))
+                            except ValueError: raise ValueError("Поле %s должно быть числом." % dotted)
+                        target[parts[-1]] = value
+                text = json.dumps(data, indent=2, ensure_ascii=False)
+            self.path.write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
             self.status.setText("Сохранено: " + self.path.name)
             self._load()
         except Exception as exc:

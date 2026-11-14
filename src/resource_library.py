@@ -252,3 +252,41 @@ class TextureLibrary(QtWidgets.QDialog):
             self.refresh()
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка удаления", str(exc))
+
+
+def compatibility_report(project):
+    """Structural preflight; does not claim to emulate a particular Bedrock runtime."""
+    project = Path(project)
+    errors, warnings, checked = [], [], 0
+    uuids = {}
+    for pack_name in ("BP", "RP"):
+        pack = project / pack_name
+        manifest = pack / "manifest.json"
+        if not manifest.is_file():
+            errors.append("%s: отсутствует manifest.json" % pack_name)
+            continue
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8-sig"))
+            header = data.get("header", {})
+            for uid in [header.get("uuid")] + [m.get("uuid") for m in data.get("modules", []) if isinstance(m, dict)]:
+                if uid:
+                    if uid in uuids:
+                        errors.append("Повтор UUID %s (%s и %s)" % (uid, uuids[uid], pack_name))
+                    uuids[uid] = pack_name
+        except Exception as exc:
+            errors.append("%s/manifest.json: %s" % (pack_name, exc))
+        for path in pack.rglob("*.json"):
+            checked += 1
+            try:
+                obj = json.loads(path.read_text(encoding="utf-8-sig"))
+                if not isinstance(obj, (dict, list)):
+                    warnings.append("%s: JSON верхнего уровня не объект/список" % path.relative_to(project))
+                if isinstance(obj, dict) and "format_version" not in obj and path.name != "manifest.json":
+                    warnings.append("%s: отсутствует format_version" % path.relative_to(project))
+            except Exception as exc:
+                errors.append("%s: некорректный JSON (%s)" % (path.relative_to(project), exc))
+    if not (project / "RP" / "textures").exists():
+        warnings.append("В RP нет папки textures — проверь, нужны ли проекту изображения.")
+    if not (project / "BP" / "items").exists():
+        warnings.append("Папка BP/items отсутствует (это нормально, если предметов нет).")
+    return {"errors": errors, "warnings": warnings, "json_checked": checked}

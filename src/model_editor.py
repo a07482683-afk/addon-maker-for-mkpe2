@@ -14,16 +14,20 @@ class Mesh:
         self.groups = groups or {"root": list(range(len(faces)))}
         self.texcoords = texcoords or []
         self.face_uvs = face_uvs or [None] * len(faces)
+        self.texture_path = None
 
 
 def load_obj(path):
     vertices, texcoords, faces, face_uvs = [], [], [], []
     groups = {}
+    material_files = []
     active = "root"
     with open(str(path), "r", encoding="utf-8", errors="replace") as stream:
         for raw_line in stream:
             line = raw_line.strip()
-            if line.startswith("o ") or line.startswith("g "):
+            if line.startswith("mtllib "):
+                material_files.extend(line.split()[1:])
+            elif line.startswith("o ") or line.startswith("g "):
                 active = re.sub(r"[^A-Za-z0-9_]+", "_", line[2:].strip()) or "root"
                 groups.setdefault(active, [])
             elif line.startswith("v "):
@@ -57,7 +61,24 @@ def load_obj(path):
     groups = {name: ids for name, ids in groups.items() if ids}
     if not vertices or not faces:
         raise ValueError("OBJ file contains no readable polygon mesh.")
-    return Mesh(vertices, faces, str(path), groups, texcoords, face_uvs)
+    mesh = Mesh(vertices, faces, str(path), groups, texcoords, face_uvs)
+    for material_file in material_files:
+        mtl_path = Path(path).parent / material_file
+        if not mtl_path.is_file():
+            continue
+        try:
+            for raw in mtl_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = raw.strip()
+                if line.startswith("map_Kd "):
+                    candidate = mtl_path.parent / line.split(maxsplit=1)[1].strip()
+                    if candidate.is_file():
+                        mesh.texture_path = candidate
+                        break
+        except Exception:
+            pass
+        if mesh.texture_path:
+            break
+    return mesh
 
 
 def load_ascii_fbx(path):
@@ -174,14 +195,43 @@ class MeshView(QtWidgets.QWidget):
         super().__init__(parent)
         self.setMinimumSize(420, 360)
         self.mesh = None
-        self.wireframe = True
+        self.texture = QtGui.QImage()
+        self.wireframe = False
         self.yaw, self.pitch, self.zoom = -35.0, 20.0, 1.0
         self.last_pos = None
         self.setStyleSheet("background:#11151d;border:1px solid #343b4b;border-radius:8px;")
 
     def set_mesh(self, mesh):
         self.mesh = mesh
+        self.texture = QtGui.QImage(str(mesh.texture_path)) if mesh.texture_path else QtGui.QImage()
         self.update()
+
+    def set_texture(self, filename):
+        image = QtGui.QImage(filename)
+        if image.isNull():
+            raise ValueError("Не удалось открыть изображение. Используйте PNG или JPG.")
+        self.texture = image
+        self.update()
+
+    @staticmethod
+    def _affine(source, target):
+        x0, y0 = source[0]
+        x1, y1 = source[1]
+        x2, y2 = source[2]
+        X0, Y0 = target[0]
+        X1, Y1 = target[1]
+        X2, Y2 = target[2]
+        det = x0*(y1-y2) + x1*(y2-y0) + x2*(y0-y1)
+        if abs(det) < 1e-9:
+            return None
+        def solve(v0, v1, v2):
+            a = (v0*(y1-y2) + v1*(y2-y0) + v2*(y0-y1)) / det
+            b = (v0*(x2-x1) + v1*(x0-x2) + v2*(x1-x0)) / det
+            c = (v0*(x1*y2-x2*y1) + v1*(x2*y0-x0*y2) + v2*(x0*y1-x1*y0)) / det
+            return a, b, c
+        m11, m21, dx = solve(X0, X1, X2)
+        m12, m22, dy = solve(Y0, Y1, Y2)
+        return QtGui.QTransform(m11, m12, m21, m22, dx, dy)
 
     def reset_view(self):
         self.yaw, self.pitch, self.zoom = -35.0, 20.0, 1.0
@@ -230,17 +280,34 @@ class MeshView(QtWidgets.QWidget):
             ry, rz2 = y * cp - rz * sp, y * sp + rz * cp
             projected.append((self.width() / 2 + rx * scale, self.height() / 2 - ry * scale, rz2))
         triangles = []
-        for face in self.mesh.faces:
+        for face_index, face in enumerate(self.mesh.faces):
             pts = [projected[i] for i in face]
-            triangles.append((sum(p[2] for p in pts) / 3, pts))
+            triangles.append((sum(p[2] for p in pts) / 3, face_index, pts))
         triangles.sort(key=lambda item: item[0])
-        for depth, pts in triangles:
+        for depth, face_index, pts in triangles:
             poly = QtGui.QPolygonF([QtCore.QPointF(p[0], p[1]) for p in pts])
-            shade = max(65, min(190, int(125 + depth * 2)))
-            painter.setBrush(QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24)))
-            edge = QtGui.QColor("#202a3a") if self.wireframe else QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24))
-            painter.setPen(QtGui.QPen(edge, 1 if self.wireframe else 0))
-            painter.drawPolygon(poly)
+            painter.save()
+            uv = self.mesh.face_uvs[face_index] if face_index < len(self.mesh.face_uvs) else None
+            if not self.texture.isNull() and uv and all(item is not None for item in uv):
+                source = [(uv[i][0] * self.texture.width(), (1.0 - uv[i][1]) * self.texture.height()) for i in range(3)]
+                target = [(pts[i][0], pts[i][1]) for i in range(3)]
+                transform = self._affine(source, target)
+                if transform is not None:
+                    clip = QtGui.QPainterPath()
+                    clip.addPolygon(poly)
+                    painter.setClipPath(clip)
+                    painter.setTransform(transform, True)
+                    painter.drawImage(0, 0, self.texture)
+            else:
+                shade = max(65, min(190, int(125 + depth * 2)))
+                painter.setBrush(QtGui.QColor(shade, min(255, shade + 8), min(255, shade + 24)))
+                painter.setPen(QtCore.Qt.NoPen)
+                painter.drawPolygon(poly)
+            painter.restore()
+            if self.wireframe:
+                painter.setBrush(QtCore.Qt.NoBrush)
+                painter.setPen(QtGui.QPen(QtGui.QColor("#202a3a"), 1))
+                painter.drawPolygon(poly)
         painter.setPen(QtGui.QColor("#aab6c8"))
         painter.drawText(12, 22, "Faces: %d   Vertices: %d   Parts: %d" % (len(self.mesh.faces), len(verts), len(self.mesh.groups)))
 
@@ -269,6 +336,13 @@ class ModelWorkspace(QtWidgets.QDialog):
         root.addLayout(bar)
         self.view = MeshView()
         root.addWidget(self.view, 1)
+        texture_bar = QtWidgets.QHBoxLayout()
+        texture_button = QtWidgets.QPushButton("Загрузить PNG-текстуру…")
+        texture_button.clicked.connect(self.choose_texture)
+        texture_bar.addWidget(texture_button)
+        self.texture_label = QtWidgets.QLabel("Текстура не выбрана")
+        texture_bar.addWidget(self.texture_label, 1)
+        root.addLayout(texture_bar)
         wire_button = QtWidgets.QPushButton("Сетка полигонов: вкл / выкл")
         wire_button.clicked.connect(self.toggle_wireframe)
         root.addWidget(wire_button)
@@ -324,6 +398,16 @@ class ModelWorkspace(QtWidgets.QDialog):
         note.setStyleSheet("color:#e6c27a;")
         root.addWidget(note)
 
+    def choose_texture(self):
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Выбрать текстуру модели", "", "Изображения (*.png *.jpg *.jpeg *.bmp)")
+        if not filename:
+            return
+        try:
+            self.view.set_texture(filename)
+            self.texture_label.setText("Текстура: " + Path(filename).name)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Ошибка текстуры", str(exc))
+
     def toggle_wireframe(self):
         self.view.wireframe = not self.view.wireframe
         self.view.update()
@@ -355,6 +439,7 @@ class ModelWorkspace(QtWidgets.QDialog):
                 self.model_file = source
             self.mesh = import_mesh(str(self.model_file))
             self.view.set_mesh(self.mesh)
+            self.texture_label.setText("Текстура: " + self.mesh.texture_path.name if self.mesh.texture_path else "Текстура не найдена — выберите PNG вручную")
             self.path_label.setText(self.model_file.name)
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка импорта", str(exc))

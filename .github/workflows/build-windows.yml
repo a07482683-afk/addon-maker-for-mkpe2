@@ -21,6 +21,7 @@ on:
       - phase8-beginner-studio-examples
       - phase9-item-icon-3d-preview-fixes
       - phase10-uv-mesh-preview
+      - phase11-textured-3d-preview
     paths:
       - "src/**"
       - "requirements.txt"

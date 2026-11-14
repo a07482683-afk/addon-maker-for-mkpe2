@@ -83,6 +83,17 @@ class WorkspaceWindow(MainWindow):
         self._build_menus()
         self._build_toolbar()
 
+        self.tree_search = QtWidgets.QLineEdit()
+        self.tree_search.setPlaceholderText("Поиск ресурса по имени…")
+        self.tree_search.textChanged.connect(self._apply_tree_filter)
+        self.tree_filter = QtWidgets.QComboBox()
+        self.tree_filter.addItems(["Все типы", "JSON", "PNG", "Изображение", "3D-модель OBJ", "3D-модель FBX", "Папка"])
+        self.tree_filter.currentTextChanged.connect(self._apply_tree_filter)
+        tree_panel = QtWidgets.QWidget()
+        tree_layout = QtWidgets.QVBoxLayout(tree_panel)
+        tree_layout.setContentsMargins(4,4,4,4)
+        tree_layout.addWidget(self.tree_search)
+        tree_layout.addWidget(self.tree_filter)
         self.project_tree = QtWidgets.QTreeWidget()
         self.project_tree.setHeaderLabels(["Проект / файлы", "Тип"])
         self.project_tree.setColumnWidth(0, 260)
@@ -91,7 +102,8 @@ class WorkspaceWindow(MainWindow):
         self.project_tree.customContextMenuRequested.connect(self._tree_menu)
         dock = QtWidgets.QDockWidget("ПРОЕКТ — все ресурсы всегда здесь", self)
         dock.setObjectName("ProjectBrowser")
-        dock.setWidget(self.project_tree)
+        tree_layout.addWidget(self.project_tree)
+        dock.setWidget(tree_panel)
         self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
 
         center = QtWidgets.QWidget()
@@ -142,7 +154,7 @@ class WorkspaceWindow(MainWindow):
         file_menu.addAction("Выход", self.close)
         create_menu = self.menuBar().addMenu("Создать")
         for label, key in (("Предмет", "item"), ("Блок", "block"), ("Броня", "armor"),
-                           ("Текстуру", "texture"), ("3D-модель", "model"), ("События", "logic"),
+                           ("Текстуру", "texture"), ("Библиотека текстур", "texture_library"), ("3D-модель", "model"), ("События", "logic"),
                            ("Подключить PNG", "registry")):
             action = create_menu.addAction(label)
             action.triggered.connect(lambda checked=False, k=key: self.open_tool(k))
@@ -189,6 +201,7 @@ class WorkspaceWindow(MainWindow):
                 root.addChild(node)
         root.setExpanded(True)
         self.project_tree.resizeColumnToContents(0)
+        self._apply_tree_filter()
 
     def _add_folder_items(self, parent, folder):
         try:
@@ -210,6 +223,24 @@ class WorkspaceWindow(MainWindow):
                 ".obj":"3D-модель OBJ", ".fbx":"3D-модель FBX", ".mcaddon":"Аддон",
                 ".mcpack":"Пакет", ".tstudio":"Проект текстуры", ".txt":"Текст"}.get(ext, "Файл")
 
+    def _apply_tree_filter(self, *_):
+        if not hasattr(self, "project_tree"):
+            return
+        query = self.tree_search.text().lower().strip()
+        kind = self.tree_filter.currentText()
+        def visit(item):
+            child_visible = False
+            for i in range(item.childCount()):
+                if visit(item.child(i)):
+                    child_visible = True
+            name_match = query in item.text(0).lower()
+            type_match = kind == "Все типы" or item.text(1) == kind or item.text(1) == "Папка"
+            visible = (name_match and type_match) or child_visible
+            item.setHidden(not visible)
+            return visible
+        for i in range(self.project_tree.topLevelItemCount()):
+            visit(self.project_tree.topLevelItem(i))
+
     def _open_tree_item(self, item, column):
         raw = item.data(0, QtCore.Qt.UserRole)
         if not raw:
@@ -219,7 +250,8 @@ class WorkspaceWindow(MainWindow):
             item.setExpanded(not item.isExpanded())
             return
         if path.suffix.lower() in (".json", ".txt", ".lang", ".material"):
-            editor = JsonEditor(path, self)
+            from resource_library import ResourceEditor
+            editor = ResourceEditor(path, self.project_path, self)
             editor.exec_()
             self.refresh_project_tree()
             return
@@ -251,6 +283,13 @@ class WorkspaceWindow(MainWindow):
         menu.exec_(self.project_tree.viewport().mapToGlobal(pos))
 
     def open_tool(self, key):
+        if key == "texture_library":
+            if not self.ensure_project():
+                return
+            from resource_library import TextureLibrary
+            TextureLibrary(self.project_path, self).exec_()
+            self.refresh_project_tree()
+            return
         if key not in ("model", "texture", "logic") and not self.ensure_project():
             return
         if key in ("model", "texture", "logic") and self.project_path is None:
@@ -330,6 +369,19 @@ class WorkspaceWindow(MainWindow):
         target, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспортировать аддон", suggested, "Minecraft Add-on (*.mcaddon)")
         if not target:
             return
+        from resource_library import compatibility_report
+        preflight = compatibility_report(self.project_path)
+        if preflight["errors"]:
+            QtWidgets.QMessageBox.critical(self, "Проверка проекта не пройдена",
+                "Найдено ошибок: %d\n\n" % len(preflight["errors"]) + "\n".join(preflight["errors"][:30]))
+            return
+        if preflight["warnings"]:
+            answer = QtWidgets.QMessageBox.warning(self, "Есть предупреждения",
+                "JSON проверено: %d\nПредупреждений: %d\n\n" % (preflight["json_checked"], len(preflight["warnings"])) +
+                "\n".join(preflight["warnings"][:20]) + "\n\nПродолжить экспорт?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, QtWidgets.QMessageBox.No)
+            if answer != QtWidgets.QMessageBox.Yes:
+                return
         try:
             result = export_mcaddon(self.project_path, target)
             report = validate_mcaddon(result)

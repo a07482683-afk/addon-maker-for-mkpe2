@@ -277,7 +277,7 @@ class MainWindow(QtWidgets.QMainWindow):
 def main():
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
-    window = MainWindow()
+    from workspace import WorkspaceWindow\n    window = WorkspaceWindow()
     window.show()
     return app.exec_()
 

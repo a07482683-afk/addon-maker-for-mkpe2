@@ -5,6 +5,7 @@ on:
   pull_request:
     branches:
       - main
+      - phase12-blender-workspace
     paths:
       - "src/**"
       - "requirements.txt"

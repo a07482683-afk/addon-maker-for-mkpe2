@@ -2,6 +2,7 @@ import sys
 import uuid
 from pathlib import Path
 from PySide2 import QtWidgets
+from PySide2.QtCore import QSettings
 from editors import TextureEditor, LogicWorkspace
 from content_editors import ItemEditor, BlockEditor, ArmorEditor, TextureRegistryEditor
 from model_editor import ModelWorkspace
@@ -82,7 +83,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self):
         super().__init__()
         self.project_path = None
-        self.settings = QtWidgets.QSettings("AddonMaker", "MCPE")
+        self.settings = QSettings("AddonMaker", "MCPE")
         self.setWindowTitle(APP_NAME + " • " + APP_VERSION)
         self.resize(1040, 720)
         self.setMinimumSize(850, 600)

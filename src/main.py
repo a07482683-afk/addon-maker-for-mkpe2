@@ -96,7 +96,7 @@ class ProjectDialog(QtWidgets.QDialog):
         layout.addWidget(buttons)
     def update_version_info(self, version):
         if version == "1.7.0":
-            self.version_info.setText("Старый профиль MCPE 1.7.0: сущности, старые модели и текстуры. Современные редакторы предметов, блоков и брони отключены.")
+            self.version_info.setText("Старый профиль MCPE 1.7.0: текстуры и изменение поддерживаемых стандартных сущностей. Пользовательские мобы появились в 1.8.0, предметы и блоки — в 1.12.0.")
         else:
             self.version_info.setText("Профиль Bedrock %s. Совместимость конкретных компонентов проверяется отдельно." % version)
 

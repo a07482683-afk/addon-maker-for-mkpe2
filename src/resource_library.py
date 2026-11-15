@@ -204,7 +204,7 @@ class TextureLibrary(QtWidgets.QDialog):
 
     def refresh(self, *_):
         self.files.clear()
-        root = self.project / "RP" / "textures"
+        root = self.folder()
         if root.is_dir():
             for path in sorted(root.rglob("*")):
                 if path.is_file() and path.suffix.lower() in (".png",".jpg",".jpeg",".bmp"):
@@ -262,7 +262,8 @@ class TextureLibrary(QtWidgets.QDialog):
             return
         try:
             from editors import TextureEditor
-            TextureEditor(self, str(self.project)).exec_()
+            TextureEditor(self, str(self.project), str(path)).exec_()
+            self.refresh()
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка редактора", str(exc))
 
@@ -281,9 +282,21 @@ class TextureLibrary(QtWidgets.QDialog):
 
 
 def compatibility_report(project):
-    """Structural preflight; does not claim to emulate a particular Bedrock runtime."""
+    """Structural checks plus conservative feature gates for the selected Bedrock target."""
     project = Path(project)
     errors, warnings, checked = [], [], 0
+    settings_path = project / ".addonmaker.json"
+    target_version = "1.20.0"
+    if settings_path.is_file():
+        try:
+            settings = json.loads(settings_path.read_text(encoding="utf-8-sig"))
+            target_version = settings.get("target_version", target_version)
+        except Exception:
+            warnings.append("Не удалось прочитать .addonmaker.json; версия проекта принята как 1.20.0.")
+    try:
+        version_tuple = tuple(int(x) for x in str(target_version).split(".")[:3])
+    except Exception:
+        version_tuple = (1, 20, 0)
     uuids = {}
     for pack_name in ("BP", "RP"):
         pack = project / pack_name
@@ -294,6 +307,9 @@ def compatibility_report(project):
         try:
             data = json.loads(manifest.read_text(encoding="utf-8-sig"))
             header = data.get("header", {})
+            min_engine = header.get("min_engine_version", [])
+            if target_version == "1.7.0" and min_engine != [1, 7, 0]:
+                errors.append("%s/manifest.json: min_engine_version должен быть [1, 7, 0] для профиля MCPE 1.7.0." % pack_name)
             for uid in [header.get("uuid")] + [m.get("uuid") for m in data.get("modules", []) if isinstance(m, dict)]:
                 if uid:
                     if uid in uuids:
@@ -309,10 +325,25 @@ def compatibility_report(project):
                     warnings.append("%s: JSON верхнего уровня не объект/список" % path.relative_to(project))
                 if isinstance(obj, dict) and "format_version" not in obj and path.name != "manifest.json":
                     warnings.append("%s: отсутствует format_version" % path.relative_to(project))
+                if version_tuple <= (1, 7, 0) and isinstance(obj, dict):
+                    rel = str(path.relative_to(project)).replace("\\", "/").lower()
+                    modern = []
+                    if "minecraft:item" in obj:
+                        modern.append("современный формат пользовательского предмета")
+                    if "minecraft:block" in obj:
+                        modern.append("современный формат пользовательского блока")
+                    if "minecraft:biome" in obj:
+                        modern.append("современный формат пользовательского биома")
+                    if rel.startswith("bp/items/") or rel.startswith("bp/blocks/"):
+                        modern.append("современная папка пользовательских предметов/блоков")
+                    if modern:
+                        errors.append("%s: %s не совместимы с MCPE 1.7.0." %
+                                      (path.relative_to(project), ", ".join(sorted(set(modern)))))
             except Exception as exc:
                 errors.append("%s: некорректный JSON (%s)" % (path.relative_to(project), exc))
     if not (project / "RP" / "textures").exists():
         warnings.append("В RP нет папки textures — проверь, нужны ли проекту изображения.")
-    if not (project / "BP" / "items").exists():
+    if target_version != "1.7.0" and not (project / "BP" / "items").exists():
         warnings.append("Папка BP/items отсутствует (это нормально, если предметов нет).")
-    return {"errors": errors, "warnings": warnings, "json_checked": checked}
+    return {"errors": errors, "warnings": warnings, "json_checked": checked,
+            "target_version": target_version}

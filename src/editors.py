@@ -175,10 +175,11 @@ class TextureCanvas(QtWidgets.QWidget):
 
 
 class TextureEditor(QtWidgets.QDialog):
-    def __init__(self, parent=None, project_path=None):
+    def __init__(self, parent=None, project_path=None, initial_image_path=None):
         super().__init__(parent)
         self.setWindowTitle("Редактор текстур — рисование иконок и текстур")
         self.project_path = Path(project_path) if project_path else None
+        self.current_image_path = Path(initial_image_path) if initial_image_path else None
         self.resize(1180, 760)
         root = QtWidgets.QVBoxLayout(self)
         top = QtWidgets.QHBoxLayout()
@@ -244,6 +245,8 @@ class TextureEditor(QtWidgets.QDialog):
         self.status = QtWidgets.QLabel("Карандаш • 64 × 64 • Прозрачный фон")
         root.addWidget(self.status)
         self.refresh_layers()
+        if self.current_image_path and self.current_image_path.is_file():
+            self.load_image_file(self.current_image_path)
 
     def refresh_layers(self):
         self.layer_list.blockSignals(True)
@@ -331,24 +334,34 @@ class TextureEditor(QtWidgets.QDialog):
             self.color_preview.setStyleSheet("background:%s;border:1px solid #555;border-radius:5px;" % color.name())
             self.status.setText("Цвет: " + color.name())
 
+    def load_image_file(self, path):
+        image = QtGui.QImage(str(path))
+        if image.isNull():
+            QtWidgets.QMessageBox.warning(self, "Не удалось открыть", "Файл не является поддерживаемым изображением.")
+            return False
+        self.canvas.snapshot()
+        self.canvas.add_layer(Path(path).stem)
+        self.canvas.image = image.convertToFormat(QtGui.QImage.Format_ARGB32)
+        self.canvas.update()
+        self.refresh_layers()
+        self.current_image_path = Path(path)
+        self.status.setText("Открыта текстура: " + Path(path).name)
+        return True
+
     def open_image(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть текстуру", "", "Images (*.png *.jpg *.bmp)")
+        start = str(self.current_image_path.parent) if self.current_image_path else ""
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(self, "Открыть текстуру", start, "Images (*.png *.jpg *.bmp)")
         if path:
-            image = QtGui.QImage(path)
-            if not image.isNull():
-                self.canvas.snapshot()
-                self.canvas.add_layer(Path(path).stem)
-                self.canvas.image = image.convertToFormat(QtGui.QImage.Format_ARGB32)
-                self.canvas.update()
-                self.refresh_layers()
-                self.status.setText("Добавлен новый слой: " + Path(path).name)
+            self.load_image_file(path)
 
     def save_image(self):
-        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспорт текстуры", "texture.png", "PNG image (*.png)")
+        default = str(self.current_image_path) if self.current_image_path else "texture.png"
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Сохранить текстуру PNG", default, "PNG image (*.png)")
         if path:
             if not path.lower().endswith(".png"):
                 path += ".png"
             if self.canvas.composite().save(path, "PNG"):
+                self.current_image_path = Path(path)
                 self.status.setText("Текстура PNG сохранена: " + path)
             else:
                 QtWidgets.QMessageBox.warning(self, "Export failed", "Не удалось сохранить PNG-файл.")

@@ -6,6 +6,8 @@ on:
     branches:
       - main
       - phase12-blender-workspace
+      - phase13-resource-editors-textures-validation
+      - phase14-mcpe-version-profiles-ui-fixes
     paths:
       - "src/**"
       - "requirements.txt"

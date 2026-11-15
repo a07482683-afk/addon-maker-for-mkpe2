@@ -204,7 +204,7 @@ class TextureLibrary(QtWidgets.QDialog):
 
     def refresh(self, *_):
         self.files.clear()
-        root = self.project / "RP" / "textures"
+        root = self.folder()
         if root.is_dir():
             for path in sorted(root.rglob("*")):
                 if path.is_file() and path.suffix.lower() in (".png",".jpg",".jpeg",".bmp"):
@@ -262,7 +262,8 @@ class TextureLibrary(QtWidgets.QDialog):
             return
         try:
             from editors import TextureEditor
-            TextureEditor(self, str(self.project)).exec_()
+            TextureEditor(self, str(self.project), str(path)).exec_()
+            self.refresh()
         except Exception as exc:
             QtWidgets.QMessageBox.critical(self, "Ошибка редактора", str(exc))
 

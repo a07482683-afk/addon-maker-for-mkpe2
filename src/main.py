@@ -11,23 +11,24 @@ from project_store import save_project_settings, load_project_settings, validate
 from examples import create_learning_examples
 
 APP_NAME = "Addon Maker для MCPE"
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 def write_json(path, data):
     import json
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")
 
-def manifest(name, description, pack_type):
+def manifest(name, description, pack_type, target_version="1.20.0"):
+    engine = [int(part) for part in target_version.split(".")]
     return {
         "format_version": 2,
         "header": {"name": name, "description": description, "uuid": str(uuid.uuid4()),
-                   "version": [1, 0, 0], "min_engine_version": [1, 20, 0]},
+                   "version": [1, 0, 0], "min_engine_version": engine},
         "modules": [{"type": "data" if pack_type == "BP" else "resources",
                      "uuid": str(uuid.uuid4()), "version": [1, 0, 0]}]
     }
 
-def create_project(location, name, description):
+def create_project(location, name, description, target_version="1.20.0"):
     safe = "".join(c for c in name if c.isalnum() or c in " -_").strip()
     if not safe:
         raise ValueError("Введите название проекта.")
@@ -39,11 +40,21 @@ def create_project(location, name, description):
     bp, rp = project / "BP", project / "RP"
     bp.mkdir(parents=True)
     rp.mkdir(parents=True)
-    write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP"))
-    write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP"))
+    write_json(bp / "manifest.json", manifest(safe + " BP", description, "BP", target_version))
+    write_json(rp / "manifest.json", manifest(safe + " RP", description, "RP", target_version))
     (project / "README.txt").write_text(safe + chr(10) + "BP — поведение и предметы." + chr(10) + "RP — текстуры и ресурсы." + chr(10), encoding="utf-8")
-    create_learning_examples(project)
-    save_project_settings(project)
+    if target_version == "1.7.0":
+        for folder in ("BP/entities", "BP/spawn_rules", "RP/entity", "RP/models/entity",
+                       "RP/textures/entity", "RP/texts"):
+            (project / folder).mkdir(parents=True, exist_ok=True)
+        (project / "README-MCPE-1.7.txt").write_text(
+            "Профиль Minecraft PE 1.7.0\\n\\n"
+            "Старый формат аддонов: сущности, spawn_rules, модели и текстуры. "
+            "Современные пользовательские предметы, блоки, броня и биомы не поддерживаются.\\n",
+            encoding="utf-8")
+    else:
+        create_learning_examples(project)
+    save_project_settings(project, {"target_version": target_version})
     return project
 
 class ProjectDialog(QtWidgets.QDialog):
@@ -59,6 +70,12 @@ class ProjectDialog(QtWidgets.QDialog):
         self.name = QtWidgets.QLineEdit("Мой первый аддон")
         self.description = QtWidgets.QLineEdit("Аддон для Minecraft Bedrock")
         self.location = QtWidgets.QLineEdit(str(Path.home() / "Documents" / "MCPE Addons"))
+        self.version = QtWidgets.QComboBox()
+        self.version.addItems(["1.7.0", "1.12.0", "1.16.0", "1.20.0", "1.21.0"])
+        self.version.setCurrentText("1.20.0")
+        self.version_info = QtWidgets.QLabel()
+        self.version_info.setWordWrap(True)
+        self.version.currentTextChanged.connect(self.update_version_info)
         browse = QtWidgets.QPushButton("Обзор…")
         browse.clicked.connect(self.browse)
         row = QtWidgets.QHBoxLayout()
@@ -66,14 +83,23 @@ class ProjectDialog(QtWidgets.QDialog):
         row.addWidget(browse)
         form.addRow("Название:", self.name)
         form.addRow("Описание:", self.description)
+        form.addRow("Версия Minecraft:", self.version)
+        form.addRow("", self.version_info)
         form.addRow("Сохранить в:", row)
         layout.addLayout(form)
+        self.update_version_info(self.version.currentText())
         buttons = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
         buttons.button(QtWidgets.QDialogButtonBox.Ok).setText("Создать")
         buttons.button(QtWidgets.QDialogButtonBox.Cancel).setText("Отмена")
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+    def update_version_info(self, version):
+        if version == "1.7.0":
+            self.version_info.setText("Старый профиль MCPE 1.7.0: сущности, старые модели и текстуры. Современные редакторы предметов, блоков и брони отключены.")
+        else:
+            self.version_info.setText("Профиль Bedrock %s. Совместимость конкретных компонентов проверяется отдельно." % version)
+
     def browse(self):
         folder = QtWidgets.QFileDialog.getExistingDirectory(self, "Выберите место")
         if folder:
@@ -201,7 +227,8 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         try:
             project = create_project(dialog.location.text().strip(), dialog.name.text().strip(),
-                                     dialog.description.text().strip() or dialog.name.text().strip())
+                                     dialog.description.text().strip() or dialog.name.text().strip(),
+                                     dialog.version.currentText())
             self.set_project(project)
             QtWidgets.QMessageBox.information(self, "Готово!", "Проект создан. Теперь выберите, что добавить.")
         except Exception as exc:
@@ -229,6 +256,13 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         bp = str(self.project_path / "BP") if self.project_path else ""
         rp = str(self.project_path / "RP") if self.project_path else ""
+        target_version = getattr(self, "project_settings", {}).get("target_version", "1.20.0")
+        if target_version == "1.7.0" and key in ("item", "block", "armor"):
+            QtWidgets.QMessageBox.warning(
+                self, "Функция не поддерживается в MCPE 1.7.0",
+                "Эти редакторы создают современные определения, которые MCPE 1.7.0 не понимает. "
+                "Выбери редактор текстур/моделей или редактируй старые файлы сущностей.")
+            return
         if key == "item":
             ItemEditor(self, bp, rp).exec_()
         elif key == "block":

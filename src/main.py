@@ -284,6 +284,13 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.ensure_project():
             return
         folder = self.project_path / "Examples"
+        target_version = getattr(self, "project_settings", {}).get("target_version", "1.20.0")
+        if target_version == "1.7.0":
+            QtWidgets.QMessageBox.information(
+                self, "Примеры для MCPE 1.7.0",
+                "Современные учебные JSON-примеры не создаются в старом профиле, чтобы не добавлять несовместимые предметы и блоки. "
+                "Папки BP/entities, BP/spawn_rules, RP/entity и RP/textures/entity подготовлены для старого формата.")
+            return
         if not folder.exists():
             create_learning_examples(self.project_path)
         QtWidgets.QMessageBox.information(self, "Учебные примеры",

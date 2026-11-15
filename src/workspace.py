@@ -276,7 +276,8 @@ class WorkspaceWindow(MainWindow):
         if path.suffix.lower() in (".png", ".jpg", ".jpeg", ".bmp"):
             if self.project_path:
                 from editors import TextureEditor
-                TextureEditor(self, str(self.project_path)).exec_()
+                TextureEditor(self, str(self.project_path), str(path)).exec_()
+                self.refresh_project_tree()
             return
         if path.suffix.lower() in (".obj", ".fbx"):
             from model_editor import ModelWorkspace

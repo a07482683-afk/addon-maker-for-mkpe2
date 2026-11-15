@@ -175,6 +175,24 @@ class WorkspaceWindow(MainWindow):
         super().set_project(path)
         self.refresh_project_tree()
 
+    def set_project(self, path):
+        super().set_project(path)
+        version = getattr(self, "project_settings", {}).get("target_version")
+        if not version:
+            # Infer a useful target from existing imported packs when no project metadata exists.
+            try:
+                manifest_path = Path(path) / "BP" / "manifest.json"
+                data = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+                version = ".".join(str(x) for x in data.get("header", {}).get("min_engine_version", [1, 20, 0]))
+            except Exception:
+                version = "unknown"
+            from project_store import save_project_settings
+            self.project_settings["target_version"] = version
+            save_project_settings(path, {"target_version": version})
+        self.project_label.setText("ПРОЕКТ: %s    •    ЦЕЛЕВАЯ ВЕРСИЯ: %s" % (Path(path).name, version))
+        self.statusBar().showMessage("Открыт проект для Minecraft %s" % version)
+        self.refresh_project_tree()
+
     def refresh_project_tree(self):
         if not hasattr(self, "project_tree"):
             return

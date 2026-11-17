@@ -33,3 +33,14 @@
 - Старые скрипты сохраняются в `ModPE/*.js`; они предназначены для совместимого BlockLauncher/ModPE, а не для импорта как современный `.mcaddon`.
 - Это генератор и редактор скриптов, а не эмулятор Minecraft: совместимость каждого вызова API нужно проверить в конкретной сборке BlockLauncher.
 - MCPE 1.7.0 не получает полноценный конструктор пользовательских биомов; новые сущности ограничены возможностями ModPE и существующими игровыми типами.
+
+
+## MCPE 1.7.0 export
+
+When the project target version is **1.7.0**, Export now uses a legacy-aware `.mcaddon` container:
+- includes the Behavior Pack and Resource Pack as `.mcpack` files;
+- includes ModPE `.js` files under `LegacyModPE/scripts/`;
+- includes imported legacy PNGs under `LegacyModPE/textures/`;
+- includes a README explaining how to use the legacy files.
+
+Important compatibility note: Minecraft PE 1.7.0 does not execute ModPE JavaScript from a `.mcaddon`. The scripts are carried inside the archive for convenient transfer; running them still requires a compatible BlockLauncher. The export is a container/package, not a conversion of ModPE code into the modern Bedrock Script API.

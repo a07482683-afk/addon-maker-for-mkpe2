@@ -12,7 +12,7 @@ from pathlib import Path
 from PySide2 import QtCore, QtWidgets
 from main import MainWindow, create_project
 from project_store import validate_project_folder
-from mcaddon_export import export_mcaddon, validate_mcaddon
+from mcaddon_export import export_mcaddon, export_mcpe170_mcaddon, validate_mcaddon
 
 
 class JsonEditor(QtWidgets.QDialog):
@@ -394,6 +394,31 @@ class WorkspaceWindow(MainWindow):
         suggested = str(Path(self.project_path) / (Path(self.project_path).name + ".mcaddon"))
         target, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Экспортировать аддон", suggested, "Minecraft Add-on (*.mcaddon)")
         if not target:
+            return
+        target_version = getattr(self, "project_settings", {}).get("target_version", "1.20.0")
+        if target_version == "1.7.0":
+            try:
+                result = export_mcpe170_mcaddon(self.project_path, target)
+                report = validate_mcaddon(result)
+                with zipfile.ZipFile(str(result), "r") as archive:
+                    legacy_scripts = sum(1 for n in archive.namelist()
+                                         if n.startswith("LegacyModPE/scripts/") and n.endswith(".js"))
+                    legacy_textures = sum(1 for n in archive.namelist()
+                                          if n.startswith("LegacyModPE/textures/"))
+                QtWidgets.QMessageBox.information(
+                    self, "Экспорт MCPE 1.7.0 завершён",
+                    "Создан файл .mcaddon и проверена структура архива.\\n" + str(result) +
+                    "\\n\\nВнутри: Behavior Pack + Resource Pack" +
+                    "\\nModPE-скриптов: " + str(legacy_scripts) +
+                    "\\nФайлов LegacyTextures: " + str(legacy_textures) +
+                    "\\n\\nВАЖНО: MCPE 1.7.0 не запускает ModPE JavaScript из .mcaddon. "
+                    "Скрипты и текстуры включены внутрь архива для переноса; "
+                    "для запуска .js нужен совместимый BlockLauncher."
+                )
+                self.statusBar().showMessage("Экспорт MCPE 1.7.0 завершён: " + str(result))
+            except Exception as exc:
+                QtWidgets.QMessageBox.critical(self, "Не удалось экспортировать", str(exc))
+            self.refresh_project_tree()
             return
         from resource_library import compatibility_report
         preflight = compatibility_report(self.project_path)

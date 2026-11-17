@@ -302,6 +302,13 @@ class WorkspaceWindow(MainWindow):
         menu.exec_(self.project_tree.viewport().mapToGlobal(pos))
 
     def open_tool(self, key):
+        if key == "modpe":
+            if not self.ensure_project():
+                return
+            from modpe_editor import ModPEStudio
+            ModPEStudio(self.project_path, self).exec_()
+            self.refresh_project_tree()
+            return
         if key == "texture_library":
             if not self.ensure_project():
                 return

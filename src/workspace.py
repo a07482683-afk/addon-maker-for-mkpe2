@@ -155,7 +155,7 @@ class WorkspaceWindow(MainWindow):
         create_menu = self.menuBar().addMenu("Создать")
         for label, key in (("Предмет", "item"), ("Блок", "block"), ("Броня", "armor"),
                            ("Текстуру", "texture"), ("Библиотека текстур", "texture_library"), ("3D-модель", "model"), ("События", "logic"),
-                           ("Подключить PNG", "registry")):
+                           ("Подключить PNG", "registry"), ("MCPE 1.7.0 — ModPE Studio", "modpe")):
             action = create_menu.addAction(label)
             action.triggered.connect(lambda checked=False, k=key: self.open_tool(k))
         window_menu = self.menuBar().addMenu("Окна")

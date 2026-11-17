@@ -118,3 +118,71 @@ def export_mcaddon(project_folder, output_file):
             addon.write(str(rp_file), rp_file.name)
     validate_mcaddon(output_file)
     return output_file
+
+import shutil
+
+def export_mcpe170_mcaddon(project_folder, output_file):
+    """Build a .mcaddon container with normal BP/RP packs plus legacy ModPE assets.
+
+    ModPE JavaScript is preserved as auxiliary files; Minecraft PE 1.7.0 does
+    not execute it from a .mcaddon. It must be loaded by a compatible
+    BlockLauncher installation. This exporter never pretends otherwise.
+    """
+    project = Path(project_folder)
+    output_file = Path(output_file)
+    if output_file.suffix.lower() != ".mcaddon":
+        output_file = output_file.with_suffix(".mcaddon")
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+
+    bp, rp = project / "BP", project / "RP"
+    validate_pack(bp, "BP")
+    validate_pack(rp, "RP")
+
+    scripts = project / "ModPE"
+    textures = project / "LegacyTextures"
+    has_scripts = scripts.is_dir() and any(p.is_file() and p.suffix.lower() == ".js" for p in scripts.rglob("*"))
+    has_textures = textures.is_dir() and any(p.is_file() for p in textures.rglob("*"))
+
+    with tempfile.TemporaryDirectory() as temp:
+        temp = Path(temp)
+        bp_file = temp / "BehaviorPack.mcpack"
+        rp_file = temp / "ResourcePack.mcpack"
+        _write_pack(bp, bp_file)
+        _write_pack(rp, rp_file)
+        with zipfile.ZipFile(str(output_file), "w", zipfile.ZIP_DEFLATED) as addon:
+            addon.write(str(bp_file), bp_file.name)
+            addon.write(str(rp_file), rp_file.name)
+            if has_scripts or has_textures:
+                readme = (
+                    "MCPE 1.7.0 LEGACY CONTENT\\n\\n"
+                    "ModPE scripts and LegacyTextures are included as extra files for transfer.\\n"
+                    "Minecraft PE 1.7.0 does NOT run ModPE JavaScript from a .mcaddon.\\n"
+                    "Use a compatible BlockLauncher version to install/run the .js scripts\\n"
+                    "and configure the legacy textures separately.\\n"
+                    "This archive is a convenient container, not a conversion of ModPE\\n"
+                    "JavaScript into the modern Bedrock Script API.\\n"
+                )
+                addon.writestr("LegacyModPE/README.txt", readme)
+            if has_scripts:
+                for path in sorted(scripts.rglob("*.js")):
+                    if path.is_file():
+                        relative = path.relative_to(scripts).as_posix()
+                        if ".." in Path(relative).parts:
+                            raise ValueError("Недопустимый путь ModPE: " + relative)
+                        addon.write(str(path), "LegacyModPE/scripts/" + relative)
+            if has_textures:
+                for path in sorted(textures.rglob("*")):
+                    if path.is_file():
+                        relative = path.relative_to(textures).as_posix()
+                        if ".." in Path(relative).parts:
+                            raise ValueError("Недопустимый путь текстуры: " + relative)
+                        addon.write(str(path), "LegacyModPE/textures/" + relative)
+
+    validate_mcaddon(output_file)
+    with zipfile.ZipFile(str(output_file), "r") as archive:
+        names = archive.namelist()
+        if has_scripts and not any(n.startswith("LegacyModPE/scripts/") and n.endswith(".js") for n in names):
+            raise ValueError("ModPE-скрипты не попали в архив.")
+        if has_textures and not any(n.startswith("LegacyModPE/textures/") for n in names):
+            raise ValueError("LegacyTextures не попали в архив.")
+    return output_file

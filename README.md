@@ -44,3 +44,14 @@ When the project target version is **1.7.0**, Export now uses a legacy-aware `.m
 - includes a README explaining how to use the legacy files.
 
 Important compatibility note: Minecraft PE 1.7.0 does not execute ModPE JavaScript from a `.mcaddon`. The scripts are carried inside the archive for convenient transfer; running them still requires a compatible BlockLauncher. The export is a container/package, not a conversion of ModPE code into the modern Bedrock Script API.
+
+
+## Phase 17 — ModPE → Bedrock Script API
+
+- Added **Конвертер ModPE → Script API** to the «Создать» menu.
+- Reads JavaScript files from `ModPE/*.js`, generates `BP/scripts/main.js`, adds a Script module to `BP/manifest.json`, and declares the selected `@minecraft/server` dependency.
+- Converts a limited set of common patterns, including `clientMessage`, basic player coordinate references, and legacy event callback shapes.
+- Writes `ModPE/conversion-report.json` with per-file warnings.
+- Calls that require declarative content (custom items, blocks, recipes) are not falsely presented as runtime conversions: the report instructs the user to migrate them into Behavior Pack / Resource Pack JSON.
+
+**Important:** this is a best-effort source migration tool, not a universal JavaScript compiler. ModPE and Bedrock Script API are different environments. Every generated script must be reviewed and tested against the exact Minecraft Bedrock version; unsupported APIs and gameplay behavior need manual migration. The old MCPE 1.7.0 client cannot run the modern Script API.

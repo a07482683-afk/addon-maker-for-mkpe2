@@ -155,7 +155,7 @@ class WorkspaceWindow(MainWindow):
         create_menu = self.menuBar().addMenu("Создать")
         for label, key in (("Предмет", "item"), ("Блок", "block"), ("Броня", "armor"),
                            ("Текстуру", "texture"), ("Библиотека текстур", "texture_library"), ("3D-модель", "model"), ("События", "logic"),
-                           ("Подключить PNG", "registry"), ("MCPE 1.7.0 — ModPE Studio", "modpe")):
+                           ("Подключить PNG", "registry"), ("MCPE 1.7.0 — ModPE Studio", "modpe"), ("Конвертер ModPE → Script API", "modpe_convert")):
             action = create_menu.addAction(label)
             action.triggered.connect(lambda checked=False, k=key: self.open_tool(k))
         window_menu = self.menuBar().addMenu("Окна")
@@ -302,6 +302,13 @@ class WorkspaceWindow(MainWindow):
         menu.exec_(self.project_tree.viewport().mapToGlobal(pos))
 
     def open_tool(self, key):
+        if key == "modpe_convert":
+            if not self.ensure_project():
+                return
+            from modpe_converter import ModPEConverterDialog
+            ModPEConverterDialog(self.project_path, self).exec_()
+            self.refresh_project_tree()
+            return
         if key == "modpe":
             if not self.ensure_project():
                 return
